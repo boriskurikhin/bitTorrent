@@ -1,0 +1,4 @@
+*.torrent
+__pycache__
+.vscode
+output.txt
