@@ -1,4 +1,5 @@
-from UDP.connection import udpConnectionHelper
+from UDP.initialConnection import udpConnectionHelper
+from UDP.announceConnection import udpAnnounceHelper
 from UDP.sender import Sender
 from metaparser import MetaContent
 import urllib.parse
@@ -6,7 +7,6 @@ import requests
 import socket
 import random
 import string
-import struct
 
 '''
     This class is responsible for HTTP/UDP communication
@@ -26,10 +26,17 @@ class Communicator:
         called once when the client starts
     '''
     def generate_peer_id(self):
-        client_id = 'Bs' #Boris Skurikhin (2 bytes)
-        client_version = '0001' # (4 bytes) TODO: version control?
-        rand = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(14))
-        self.peer_id = client_id + client_version + rand
+        client_id = '-Bs' #Boris Skurikhin (2 bytes)
+        client_version = '0001-' # (4 bytes) TODO: version control?
+        rand = ''.join(random.choice(string.ascii_letters) for _ in range(20 - 8))
+        
+        raw_id = client_id + client_version + rand
+        self.peer_id = ''
+
+        for i in range(0, 20):
+            self.peer_id += format(ord(raw_id[i]), 'x')
+        
+        assert len(self.peer_id) == 40, 'Something broke while generating peer id'
 
     '''
         If the tracker type is UDP
@@ -56,28 +63,34 @@ class Communicator:
 
         # Establishing a connection with the UDP Server
         con_helper = udpConnectionHelper()
+        ann_helper = udpAnnounceHelper()
         sender = Sender()
 
         # Create address to where we will be sending our packet
         address = (socket.gethostbyname(self.mf.announce.hostname), self.mf.announce.port)
 
-        # Pass off the request to the sender
-        response = sender.send_packet(sock, address, con_helper.pack_payload(), 16, udpConnectionHelper)
+        # Pass off the request to the sender, receive bytes
+        conn_response_bytes = sender.send_packet(sock, address, con_helper.pack_payload(), 16)
+        conn_response = con_helper.unpack_payload(conn_response_bytes)
+
+        print(conn_response)
+
+        # Parameters needed to send the announce payload
+        params = {
+            'conn_id': conn_response[2],
+            'info_hash': self.mf.info_hash,
+            'peer_id': self.peer_id,
+            'left': self.mf.length
+        }
+
+        ann_response = sender.send_packet(sock, address, ann_helper.pack_payload(params), None)
+
+        print(ann_response)
+        
+        
     
-        print(con_helper.transaction_id)
-        print(con_helper.unpack_payload(response))
-
-        # Send off the packet
-        # sock.sendto(con_helper.pack_payload(), address)
-
-        # try:
-        #     # Attempt to receive 16 bytes back
-        #     buffer = sock.recv(16)
-        #     assert len(buffer) == 16, 'Received buffer was not 16 bytes'
-
-        #     print(con_helper.unpack_payload(buffer))
-        # except socket.error as e:
-        #     print(e)
+        # print(con_helper.transaction_id)
+        # print(con_helper.unpack_payload(response))
 
 
 

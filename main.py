@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 from metaparser import MetaContent
 from communicator import Communicator
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 from bcoding import bencode, bdecode
 from datetime import datetime
 import hashlib

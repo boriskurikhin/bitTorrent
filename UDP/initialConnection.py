@@ -1,5 +1,4 @@
 import random
-import struct
 
 class udpConnectionHelper:
     '''
@@ -11,7 +10,6 @@ class udpConnectionHelper:
     '''
    
     # The thing that I kept messing up was the endian order
-    # If you don't put >, it struct.pack assumes native size or something
     # https://docs.python.org/2/library/struct.html
 
     def pack_payload(self):
