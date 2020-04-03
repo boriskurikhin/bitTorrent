@@ -27,8 +27,8 @@ class udpConnectionHelper:
         trans_id = int(hex_string[8 : 16], 16)
         conn_id = int(hex_string[16 : ], 16)
 
-        # 
+        # Make sure we received response correctly
         assert trans_id == self.transaction_id, 'Received invalid transaction id'
         assert action == 0, 'Received action that was not 0, must have error\'d out'
 
-        return conn_id
+        return (action, trans_id, conn_id)

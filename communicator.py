@@ -1,4 +1,5 @@
-from packets.connection import udpConnectionHelper
+from UDP.connection import udpConnectionHelper
+from UDP.sender import Sender
 from metaparser import MetaContent
 import urllib.parse
 import requests
@@ -55,21 +56,28 @@ class Communicator:
 
         # Establishing a connection with the UDP Server
         con_helper = udpConnectionHelper()
+        sender = Sender()
 
         # Create address to where we will be sending our packet
         address = (socket.gethostbyname(self.mf.announce.hostname), self.mf.announce.port)
 
+        # Pass off the request to the sender
+        response = sender.send_packet(sock, address, con_helper.pack_payload(), 16, udpConnectionHelper)
+    
+        print(con_helper.transaction_id)
+        print(con_helper.unpack_payload(response))
+
         # Send off the packet
-        sock.sendto(con_helper.pack_payload(), address)
+        # sock.sendto(con_helper.pack_payload(), address)
 
-        try:
-            # Attempt to receive 16 bytes back
-            buffer = sock.recv(16)
-            assert len(buffer) == 16, 'Received buffer was not 16 bytes'
+        # try:
+        #     # Attempt to receive 16 bytes back
+        #     buffer = sock.recv(16)
+        #     assert len(buffer) == 16, 'Received buffer was not 16 bytes'
 
-            print(con_helper.unpack_payload(buffer))
-        except socket.error as e:
-            print(e)
+        #     print(con_helper.unpack_payload(buffer))
+        # except socket.error as e:
+        #     print(e)
 
 
 
