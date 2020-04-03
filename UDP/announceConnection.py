@@ -22,7 +22,7 @@ class udpAnnounceHelper:
         receiving a list of peers :)
     '''
     def pack_payload(self, params):
-        self.transaction_id = random.randint(1, 100000)
+        self.transaction_id = random.randint(1, (2 << (31 - 1)) - 1)
         _info_hash = [] # temporary value to store individual bytes of the hash
         _peer_id = [] # temporary value to store individual bytes of the peer id
 

@@ -25,8 +25,8 @@ class Sender:
                 timedOut = True
                 break
         if timedOut:
-            time.sleep(random.uniform(0.3, 2))
-            received = self.send_packet(self, main_socket, address, data)
+            time.sleep(random.uniform(0.3, 2)) # sleep a random amount of time
+            received = self.send_packet(main_socket, address, data) # try again, recursively
         assert len(received) > 0, 'Did not receive anything from the server'
         return received
 

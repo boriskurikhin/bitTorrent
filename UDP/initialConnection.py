@@ -13,7 +13,7 @@ class udpConnectionHelper:
     # https://docs.python.org/2/library/struct.html
 
     def pack_payload(self):
-        self.transaction_id = random.randint(1, 2 ** 31)
+        self.transaction_id = random.randint(1, (2 << (31 - 1)) - 1)
         return 0x41727101980.to_bytes(8, byteorder='big') + 0x0.to_bytes(4, byteorder='big') + self.transaction_id.to_bytes(4, byteorder='big')
     
     # We get 16 bytes back, 4 bytes = action, 4 bytes = trans_id, 8 bytes = connection_id
