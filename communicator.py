@@ -1,3 +1,4 @@
+from packets.connection import udpConnectionHelper
 from metaparser import MetaContent
 import urllib.parse
 import requests
@@ -7,8 +8,8 @@ import string
 import struct
 
 '''
-    This class is responsible for HTTP communication
-    with the tracker. Pretty straight forward stuff.
+    This class is responsible for HTTP/UDP communication
+    with the tracker. Pretty (not) straight forward stuff.
 '''
 class Communicator:
     def __init__(self, meta_file):
@@ -52,38 +53,24 @@ class Communicator:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(4)
 
-        # connection packet we will be sending
-        connection_id = 0x41727101980
-        action = 0
-        transaction_id = random.randint(1, 10000)
+        # Establishing a connection with the UDP Server
+        con_helper = udpConnectionHelper()
 
-        a = struct.pack('>Q', connection_id)
-        b = struct.pack('>I', action)
-        c = struct.pack('>I', transaction_id)
+        # Create address to where we will be sending our packet
+        address = (socket.gethostbyname(self.mf.announce.hostname), self.mf.announce.port)
 
-        d = a + b + c
+        # Send off the packet
+        sock.sendto(con_helper.pack_payload(), address)
 
-        host = socket.gethostbyname(self.mf.announce.hostname)
-        port = int(self.mf.announce.port)
-        
-        send_address = (host, port)
-        
-        sock.sendto(d, send_address)
+        try:
+            # Attempt to receive 16 bytes back
+            buffer = sock.recv(16)
+            assert len(buffer) == 16, 'Received buffer was not 16 bytes'
 
-        r_message = b''
-        
-        while True:
-            try:
-                buff = sock.recv(4096)
-                if len(buff) <= 0:
-                    break
-                r_message += buff
-            except socket.error as e:
-                print(e)
-            except Exception as e:
-                print(e)
-        
-        print(r_message)
+            print(con_helper.unpack_payload(buffer))
+        except socket.error as e:
+            print(e)
+
 
 
 
@@ -102,12 +89,9 @@ class Communicator:
     def get_peers(self):
         scheme = self.mf.announce.scheme
 
-        if scheme == 'udp':
-            self.udp_request()
-        elif scheme == 'http':
-            self.http_request()
-        else:
-            raise Exception('%s scheme not supported!' % scheme)
+        if scheme == 'udp': self.udp_request()
+        elif scheme == 'http': self.http_request()
+        else: raise Exception('Unknown Scheme: %s' % scheme)
         
         
         

@@ -50,7 +50,7 @@ class MetaContent:
         # extract the creation date 
         self.creation_date = self.decoded['creation date']
         # extract the announce url
-        self.announce = urllib.parse.urlsplit(self.decoded['announce'])
+        self.announce = urllib.parse.urlparse(self.decoded['announce'])
         print(self.decoded['announce'])
         # calculates info hash
         self.info_hash = hashlib.sha1(
