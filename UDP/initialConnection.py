@@ -29,4 +29,8 @@ class udpConnectionHelper:
         assert trans_id == self.transaction_id, 'Received invalid transaction id'
         assert action == 0, 'Received action that was not 0, must have error\'d out'
 
-        return (action, trans_id, conn_id)
+        return {
+            'action': action,
+            'trans_id': trans_id,
+            'conn_id': conn_id
+        }

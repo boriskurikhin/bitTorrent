@@ -41,12 +41,6 @@ class Communicator:
     '''
         If the tracker type is UDP
 
-        Useful information about integer data type:
-
-        typedef signed char        int8_t;
-        typedef short              int16_t;
-        typedef int                int32_t;
-        typedef long long          int64_t;
     '''
     def udp_request(self):
         # When we send params, they must be percent encoded:
@@ -75,24 +69,18 @@ class Communicator:
 
         # Parameters needed to send the announce payload
         params = {
-            'conn_id': conn_response[2],
+            'conn_id': conn_response['conn_id'],
             'info_hash': self.mf.info_hash,
             'peer_id': self.peer_id,
             'left': self.mf.length
         }
 
-        ann_response = sender.send_packet(sock, address, ann_helper.pack_payload(params))
-        print(ann_helper.unpack_payload(ann_response))
+        # Sends out another packet requesting a list of peers who have our file
+        ann_response_bytes = sender.send_packet(sock, address, ann_helper.pack_payload(params))
+        ann_response = ann_helper.unpack_payload(ann_response_bytes)
 
-        print(ann_response)
-        
-        
-    
-        # print(con_helper.transaction_id)
-        # print(con_helper.unpack_payload(response))
-
-
-
+        self.interval = ann_response['interval']
+        self.peers = ann_response['peers'] #what we all came here for
 
     '''
         If the tracker type is HTTP
@@ -112,6 +100,5 @@ class Communicator:
         if scheme == 'udp': self.udp_request()
         elif scheme == 'http': self.http_request()
         else: raise Exception('Unknown Scheme: %s' % scheme)
-        
-        
-        
+
+        print(self.peers)

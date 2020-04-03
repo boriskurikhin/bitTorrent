@@ -35,7 +35,7 @@ class udpAnnounceHelper:
         info_hash = struct.pack('>20B', *_info_hash)
         peer_id = struct.pack('>20B', *_peer_id)
         
-        payload = struct.pack('>QII20B20BQQQIIIih', *[
+        payload = struct.pack('>QII20B20BQQQIIIiH', *[
             params['conn_id'], # Q
             1, # I
             self.transaction_id, #I
@@ -52,7 +52,6 @@ class udpAnnounceHelper:
         ])
 
         assert(len(payload) == 98), 'Invalid payload length %d' % (len(payload)) 
-        
         return payload
     
     '''
@@ -82,8 +81,14 @@ class udpAnnounceHelper:
         # Extract a list of peers
         for i in range(40, len(hex_string), 12):
             ip_add = str(ipaddress.IPv4Address(int(hex_string[i : i + 8], 16)))
-            port = int(hex_string[i + 8 : i + 8 + 4], 16)
-            peers.append((ip_add, port))
+            port = str(int(hex_string[i + 8 : i + 8 + 4], 16))
+            peers.append(':'.join([ip_add, port]))
 
-        print(action, trans_id, interval, leechers, seeders, peers)
-        
+        return {
+            'action' :action,
+            'trans_id': trans_id,
+            'interval': interval,
+            'leechers': leechers,
+            'seeders': seeders,
+            'peers': peers
+        }
