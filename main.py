@@ -1,3 +1,6 @@
-from metaparser import MetaParser
+#!/usr/bin/env python
 
-test = MetaParser('test.torrent')
+from metaparser import MetaContent
+
+mp = MetaContent()
+mp.parseFile('test.torrent')
