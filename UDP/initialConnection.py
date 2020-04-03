@@ -1,4 +1,5 @@
 import random
+import struct
 
 class udpConnectionHelper:
     '''
@@ -14,7 +15,7 @@ class udpConnectionHelper:
 
     def pack_payload(self):
         self.transaction_id = random.randint(1, (2 << (31 - 1)) - 1)
-        return 0x41727101980.to_bytes(8, byteorder='big') + 0x0.to_bytes(4, byteorder='big') + self.transaction_id.to_bytes(4, byteorder='big')
+        return struct.pack('>qII', 0x41727101980, 0, self.transaction_id)
     
     # We get 16 bytes back, 4 bytes = action, 4 bytes = trans_id, 8 bytes = connection_id
     # Returns connection id

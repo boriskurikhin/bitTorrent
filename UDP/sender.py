@@ -18,6 +18,7 @@ class Sender:
                 # read 4096 bytes into a buffer
                 buffer = main_socket.recv(4096)
                 received += buffer
+                # if we received data, we don't care anymore
                 if len(received) > 0:
                     break 
             except socket.timeout as e:
