@@ -4,7 +4,7 @@ from metaparser import MetaContent
 from communicator import Communicator
 
 mp = MetaContent()
-com = Communicator()
-
 mp.parseFile('test.torrent')
-com.get_peers(mp)
+
+com = Communicator(mp)
+com.get_peers()

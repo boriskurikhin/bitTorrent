@@ -3,6 +3,8 @@
 from bcoding import bencode, bdecode
 from datetime import datetime
 import hashlib
+import urllib.parse
+
 '''
     This class is responsible for opening a .torrent file
     and extract all the necessary information about the
@@ -16,7 +18,7 @@ class MetaContent:
     # Just dumps all the file information (nicely formatted)
     def file_info(self):
         print('\nFile Info:\n---------------')
-        print('%s:\t\t%s' % ('name', self.name))
+        print('%s:\t\t"%s"' % ('name', self.name))
         print('%s:\t%s\n' % ('created', datetime.utcfromtimestamp(self.creation_date).strftime('%Y-%m-%d %H:%M:%S')))
         print('%s:\t%s' % ('# pieces', len(self.pieces)))
         print('%s:\t%s bytes' % ('piece len', self.piece_length))
@@ -48,7 +50,8 @@ class MetaContent:
         # extract the creation date 
         self.creation_date = self.decoded['creation date']
         # extract the announce url
-        self.announce = self.decoded['announce']
+        self.announce = urllib.parse.urlsplit(self.decoded['announce'])
+        print(self.decoded['announce'])
         # calculates info hash
         self.info_hash = hashlib.sha1(
             bencode(self.decoded['info'])
