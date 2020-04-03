@@ -70,10 +70,8 @@ class Communicator:
         address = (socket.gethostbyname(self.mf.announce.hostname), self.mf.announce.port)
 
         # Pass off the request to the sender, receive bytes
-        conn_response_bytes = sender.send_packet(sock, address, con_helper.pack_payload(), 16)
+        conn_response_bytes = sender.send_packet(sock, address, con_helper.pack_payload())
         conn_response = con_helper.unpack_payload(conn_response_bytes)
-
-        print(conn_response)
 
         # Parameters needed to send the announce payload
         params = {
@@ -83,7 +81,8 @@ class Communicator:
             'left': self.mf.length
         }
 
-        ann_response = sender.send_packet(sock, address, ann_helper.pack_payload(params), None)
+        ann_response = sender.send_packet(sock, address, ann_helper.pack_payload(params))
+        print(ann_helper.unpack_payload(ann_response))
 
         print(ann_response)
         
