@@ -28,9 +28,9 @@ if __name__ == '__main__':
     mp = MetaContent()
     mp.parseFile('test.torrent')
 
-    # com = Communicator(mp)
-    # peers = com.get_peers()
+    com = Communicator(mp)
+    peers = com.get_peers()
 
-    # start_server(peers, len(mp.pieces), mp.piece_length)
+    start_server(peers, len(mp.pieces), mp.piece_length)
 
-    # reactor.run()
+    reactor.run()

@@ -24,8 +24,10 @@ class MetaContent:
             print('%s:\t%s bytes' % ('last piece', self.last_piece_len))
             print('%s:\t\t%s bytes' % ('total', self.length))
         else:
+            print('-----(# %d files)------' % (len(self.files)))
             for f in self.files:
                 print('%s:\t(%d bytes)' % (f['path'], f['length']))
+            print('------end------')
         print('%s:\t%s' % ('info-hash', self.info_hash.upper()))
     
     def parseFile(self, path_to_file):
@@ -84,6 +86,8 @@ class MetaContent:
             self.last_piece_len = self.length - self.piece_length * (len(self.pieces) - 1)
         else:
             self.files = []
+            self.length = 0
             for f in self.decoded['info']['files']:
+                self.length += int(f['length'])
                 self.files.append({ 'length': int(f['length']), 'path': f['path'][0] })
         self.file_info()
