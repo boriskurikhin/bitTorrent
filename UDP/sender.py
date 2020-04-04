@@ -8,7 +8,7 @@ class Sender:
         data has been sent/received correctly
     '''
     def __init__(self):
-        self.limit = 1
+        self.limit = 5
     
     def send_packet(self, main_socket, address, data):
         # we will be parsing this value later on

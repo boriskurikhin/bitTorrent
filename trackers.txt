@@ -5,6 +5,7 @@ udp://tracker.coppersurfer.tk:6969/announce
 udp://tracker.pirateparty.gr:6969/announce
 udp://9.rarbg.to:2730/announce
 udp://9.rarbg.to:2710/announce
+udp://bt.xxx-tracker.com:2710/announce
 udp://tracker.cyberia.is:6969/announce
 udp://retracker.lanta-net.ru:2710/announce
 udp://9.rarbg.to:2770/announce
