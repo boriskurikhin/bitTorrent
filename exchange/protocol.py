@@ -2,6 +2,7 @@ from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
 from time import time
+import math
 import bitstring
 import struct
 
@@ -25,7 +26,7 @@ class PeerProtocol(Protocol):
         self.am_choking = True
         self.am_interested = False
 
-        self.bytes_left = 0
+        self.payload_left = 0
         self.received = b''
 
     # Prints all currently connected peers
@@ -50,10 +51,8 @@ class PeerProtocol(Protocol):
 
     # TODO: Handle incoming data from peers
     def dataReceived(self, data):
-        if self.has_handshaked == False:
-            self.checkIncomingHandshake(data)
-        else: 
-            self.receive_new_message(data)
+        if not self.has_handshaked: self.checkIncomingHandshake(data)
+        else: self.receive_new_message(data)
 
     # Message ID: 5
     def parseBitfield(self, hex_str):
@@ -81,51 +80,67 @@ class PeerProtocol(Protocol):
         
         # We need to send interested message
         self.sendInterested()
-        
-    # Parsing the actual message
-    def receive_new_message(self, payload):
+    
+    # When we know we have the full message, we need to handle it
+    def handle_full_message(self, payload):
         hex_string = payload.hex()
-        print('From:', self.remote_ip)
+       
+        mlen = int(hex_string[ : 8], 16)
+        mid = int(hex_string[8 : 10], 16)
 
+        print('Received full message with id %d' % mid)
+
+        # The only one we got back so far
+        if mid == 4:
+            pass
+            #print('Recieved full a HAVE message')
+        if mid == 5:
+            #print('Received full a BITFIELD message')
+            self.parseBitfield(hex_string)
+
+
+    # Parsing a message
+    def receive_new_message(self, message):
+        hex_string = message.hex()
+        print(message)
         # if we aren't currently waiting on continuation of previous message
-        if self.bytes_left == 0:
-            self.received = b''
-            mlen = int(hex_string[ : 8], 16)
+        if self.payload_left == 0:           
+            mlen = int(hex_string[ : 8], 16) # in bytes
             mid = int(hex_string[8 : 10], 16)
 
-            # did we receive a full message, or more perhaps?
-            bytes_received = (len(hex_string) - 10) // 2
-            is_full = mlen <= bytes_received
-
-            print('Message (%d bytes, id: %d)' % (mlen, mid))
-            print('Received %d of %d bytes' % (bytes_received, mlen))
-
-            if is_full:
-                 # The only one we got back so far
-                if mid == 4:
-                    print('Recieved full a HAVE message')
-                if mid == 5:
-                    print('Received full a BITFIELD message')
-                    self.parseBitfield(hex_string)
+            # fixed size message, no payload
+            if mlen == 1:
+                self.handle_full_message(bytes.fromhex(hex_string[ : 10]))
+                self.receive_new_message(bytes.fromhex(hex_string[10 : ]))
             else:
-                # The beginning chunk of a message
-                self.bytes_left = mlen - bytes_received
-                self.received += payload
-                # Need to keep waiting on the rest
-                print('Awaiting resot of message')
+                # did we receive a full message, or more perhaps?
+                payload_length = len(hex_string[10:])
+                no_overflow = (payload_length >= (mlen * 2))
+
+                if no_overflow:
+                    self.handle_full_message(bytes.fromhex(hex_string[ : (mlen * 2)])) # send full message to responding
+                    self.receive_new_message(bytes.fromhex(hex_string[(mlen * 2) : ])) # send the rest for a re-parse
+                else:
+                    # The beginning chunk of a message
+                    self.payload_left = (mlen * 2) - payload_length
+                    self.received += message
         else:
-            bytes_received = len(hex_string) / 2
-            is_rest = (bytes_received >= self.bytes_left)
+            # received new chunk continuing the previous message
+            payload_length = len(hex_string)
+            no_overflow = (payload_length >= self.payload_left)
 
-            if is_rest:
-                for i in range(0, self.bytes_left * 2, 2):
-                    self.received += bytes.fromhex(hex_string[i : i + 2])
-                self.bytes_left = 0
-                self.receive_new_message(self.received)
+            if no_overflow:
+                self.received += bytes.fromhex(hex_string[ : self.payload_left])         
+                self.handle_full_message(self.received) # parse current
+                
+                payload_end = self.payload_left
+                self.payload_left = 0
+                self.received = b''
+                
+                self.receive_new_message(bytes.fromhex(hex_string[payload_end : ])) # parse rest
             else:
-                print('Should really never be this weird')
-                self.bytes_left -= bytes_received
-                self.received += payload
+                self.payload_left -= payload_length
+                self.received += message
 
     # Check to see if the incoming handshake is valid
     def checkIncomingHandshake(self, payload):
@@ -149,21 +164,21 @@ class PeerProtocol(Protocol):
             self.transport.loseConnection()
 
         self.has_handshaked = True
+        self.add_peer()
 
         # do we have more data? 
-        payload_len -= (56 + 40 + 40)
+        payload_len -= 136
 
         if payload_len > 0:
-            self.receive_new_message(bytes.fromhex(hex_string[56 + 40 + 40 : ]))
+            print ('Sent data along with handshake!', bytes.fromhex(hex_string[136:]))
+            self.receive_new_message(bytes.fromhex(hex_string[136:]))
 
     def add_peer(self):
-        print('Added', self.client_id, 'to peer list')
         self.factory.peers[self.client_id] = (self.remote_ip, time())
         self.printPeers()
 
     # This function is triggered upon a new connection, it sends out a handshake
     def sendHandshake(self):
-        print('Sending handshake')
         payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 0 , *self.factory.info_hash, *self.factory.peer_id])
         self.transport.write(payload)
     
