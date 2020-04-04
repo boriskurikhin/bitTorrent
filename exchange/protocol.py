@@ -86,7 +86,7 @@ class PeerProtocol(Protocol):
     def handle_full_message(self, payload):
         hex_string = payload.hex()
        
-        mlen = int(hex_string[ : 8], 16)
+        message_length = int(hex_string[ : 8], 16)
         mid = int(hex_string[8 : 10], 16)
 
         print('Handling id:', mid, '(' + self.remote_ip + ')')
@@ -102,32 +102,35 @@ class PeerProtocol(Protocol):
 
     # Parsing a message
     def receive_new_message(self, message):
-        hex_string = message.hex()
         
-        print('Message (' + self.remote_ip + ')')
-        print(self.payload_left )
-        print(message)
+        if len(message) == 0:
+            return
+        
+        hex_string = message.hex() # entire message in hex
+
+        print('From (' + self.remote_ip + ')')
+        print('Payload left', self.payload_left )
+        print('Message', message)
 
         # if we aren't currently waiting on continuation of previous message
         if self.payload_left == 0:           
-            mlen = int(hex_string[ : 8], 16) # in bytes
-            mid = int(hex_string[8 : 10], 16)
+            payload_size = int(hex_string[ : 8], 16) # (message type + payload) in bytes
 
             # fixed size message, no payload
-            if mlen == 1:
+            if payload_size == 1:
                 self.handle_full_message(bytes.fromhex(hex_string[ : 10]))
                 self.receive_new_message(bytes.fromhex(hex_string[10 : ]))
             else:
                 # did we receive a full message, or more perhaps?
-                payload_length = len(hex_string[8 :]) # message id counts toward payload size
-                no_overflow = (payload_length >= (mlen * 2))
+                payload_length = len(hex_string[8:]) # counts hex chars (message type + payload)
+                no_overflow = (payload_length >= (payload_size * 2))
 
                 if no_overflow:
-                    self.handle_full_message(bytes.fromhex(hex_string[ : (mlen * 2)])) # send full message to responding
-                    self.receive_new_message(bytes.fromhex(hex_string[(mlen * 2) : ])) # send the rest for a re-parse
+                    self.handle_full_message(bytes.fromhex(hex_string[ : (payload_size * 2) + 8])) # send full message to responding
+                    self.receive_new_message(bytes.fromhex(hex_string[(payload_size * 2) + 8 : ])) # send the rest for a re-parse
                 else:
                     # The beginning chunk of a message
-                    self.payload_left = (mlen * 2) - payload_length
+                    self.payload_left = (payload_size * 2) - payload_length
                     self.received += message
         else:
             # received new chunk continuing the previous message
