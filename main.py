@@ -28,7 +28,7 @@ if __name__ == '__main__':
     mp = MetaContent()
     mp.parseFile('test.torrent')
 
-    com = Communicator(mp)
+    com = Communicator(mp, False)
     peers = com.get_peers()
 
     start_server(peers, len(mp.pieces), mp.piece_length)

@@ -7,6 +7,9 @@ class Sender:
         packets back, as well as, validating to make sure all the 
         data has been sent/received correctly
     '''
+    def __init__(self):
+        self.limit = 1
+    
     def send_packet(self, main_socket, address, data):
         # we will be parsing this value later on
         main_socket.sendto(data, address)
@@ -22,13 +25,15 @@ class Sender:
                 if len(received) > 0:
                     break 
             except socket.timeout as e:
-                print (e)
                 timedOut = True
+                self.limit -= 1
                 break
         if timedOut:
-            time.sleep(random.uniform(0.3, 2)) # sleep a random amount of time
-            received = self.send_packet(main_socket, address, data) # try again, recursively
-        assert len(received) > 0, 'Did not receive anything from the server'
+            if self.limit >= 0:
+                time.sleep(random.uniform(0.3, 2)) # sleep a random amount of time
+                received = self.send_packet(main_socket, address, data) # try again, recursively
+            else: return received
+        # assert len(received) > 0, 'Did not receive anything from the server'
         return received
 
 
