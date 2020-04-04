@@ -89,7 +89,7 @@ class PeerProtocol(Protocol):
 
         # The only one we got back so far 
         if mid == 5:
-            self.parseBitfield(hex_string)   
+            self.parseBitfield(hex_string)
 
     # Check to see if the incoming handshake is valid
     def checkIncomingHandshake(self, payload):

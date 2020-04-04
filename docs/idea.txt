@@ -2,5 +2,8 @@ We want to download a file
 
 1. We need to parse .torrent file
 2. Contact tracker and get list of peers who have the file
+    2.0 - Peer Exchange (http://bittorrent.org/beps/bep_0011.html)
+    2.1 - Since some trackers are shit, we need to scrape a bunch
+          of other trackers to get a bigger list of peers
 3. Connect with peers, download file
 4. Profit
