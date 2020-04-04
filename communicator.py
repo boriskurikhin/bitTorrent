@@ -21,6 +21,7 @@ class Communicator:
         
         # Kind of waste of time rn
         self.trackers = []
+        self.load_extra_trackers = extra_trackers
         if extra_trackers:
             self.extra_trackers()
 
@@ -66,19 +67,20 @@ class Communicator:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(4)
 
-        if len(self.trackers) == 0:
+        if not self.load_extra_trackers:
             self.trackers.append(self.mf.announce)
 
+        # List of peers
         self.peers = []
 
         # Contact every tracker
         for announce in self.trackers:
             
-            print('Hitting', announce.hostname)
-
             # We only care about UDP
             if announce.scheme != 'udp': 
                 continue
+            
+            print('Querying', announce.hostname)
 
             # Establishing a connection with the UDP Server
             con_helper = udpConnectionHelper()
