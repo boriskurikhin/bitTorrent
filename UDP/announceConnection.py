@@ -2,6 +2,7 @@ import random
 import struct
 import hashlib
 import ipaddress
+from utilities.h2i import hash2ints
 
 class udpAnnounceHelper:
     '''
@@ -23,18 +24,9 @@ class udpAnnounceHelper:
     '''
     def pack_payload(self, params):
         self.transaction_id = random.randint(1, (2 << (31 - 1)) - 1)
-        _info_hash = [] # temporary value to store individual bytes of the hash
-        _peer_id = [] # temporary value to store individual bytes of the peer id
+        _info_hash = hash2ints(params['info_hash']) # temporary value to store individual bytes of the hash
+        _peer_id = hash2ints(params['peer_id']) # temporary value to store individual bytes of the peer id
 
-        # loops through the hash hex, and creates array of 2 byte integers
-        for i in range(0, 40, 2):
-            _info_hash.append(int(params['info_hash'][i : i + 2], 16))
-            _peer_id.append(int(params['peer_id'][i : i + 2], 16))
-
-        # unsigned bytes
-        info_hash = struct.pack('>20B', *_info_hash)
-        peer_id = struct.pack('>20B', *_peer_id)
-        
         payload = struct.pack('>QII20B20BQQQIIIiH', *[
             params['conn_id'], # Q
             1, # I

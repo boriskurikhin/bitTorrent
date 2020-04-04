@@ -1,5 +1,7 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
+from utilities.h2i import hash2ints
+import struct
 
 '''
     This is how we will communicate with peers
@@ -11,35 +13,36 @@ class PeerProtocol(Protocol):
     def __init__(self, factory, state="SEND_HANDSHAKE"):
         self.factory = factory
         self.my_id = self.factory.peer_id # my peer id
-        self.peer_id = None # peer's id
-        self.pstr = 'BitTorrent protocol'
-        self.pstrlen = len(self.pstr)
+        self.remote_peer_id = None # peer's id
     
     def connectionMade(self):
-        print('Connection from', self.transport.getPeer())
-        def connectionLost(self, reason):
-            if self.peer_id in self.factory.peers:
-                self.factory.peers.pop(self.peer_id)
-            print(self.peer_id, 'disconnected')
-
-    def dataReceived(self, data):
-        print(data)
+        print('NEW CONNECTION (PEER):', self.transport.getPeer())
+        print('NEW CONNECTION (HOST):', self.transport.getHost())
+        #self.sendHandshake()
     
+    def connectionLost(self, reason):
+        # if self.remote_peer_id in self.factory.peers:
+        #     self.factory.peers.pop(self.remote_peer_id)
+        print('DISCONNECT:', self.remote_peer_id)
+
+    # TODO: Handle incoming data from peers
+    def dataReceived(self, data):
+        print('DATA RECEIVED:', data)
+    
+    # This function is triggered upon a new connection, it sends out a handshake
     def sendHandshake(self):
-        self.transport.write(
-            str(self.pstrlen) + \
-            self.pstr + '00000000' + \
-            'ef6ca3afb05ff8bc81ca8b8b4cc59cba120f34d1' + \
-            '2d4273303030312d566a786f6e434e784d747352'
-        )
+        print('SENDING HANDSHAKE:')
+        payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 0, *self.factory.info_hash, *self.factory.peer_id])
+        self.transport.write(payload)
 
 class PeerFactory(Factory):
-    def __init__(self):
+    def __init__(self, info_ints, peer_ints):
+        self.info_hash = hash2ints(info_ints)
+        self.peer_id = hash2ints(peer_ints)
         pass
 
     def startFactory(self):
         self.peers = {}
-        self.peer_id = 'PEER ID'
 
     def buildProtocol(self, addr):
         return PeerProtocol(self)

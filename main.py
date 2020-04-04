@@ -9,17 +9,11 @@ mp = MetaContent()
 mp.parseFile('test.torrent')
 
 com = Communicator(mp)
-#peers = com.get_peers()
-
-print(com.peer_id)
-print(mp.info_hash)
-
-peers = []
+peers = com.get_peers()
 
 server = TCP4ServerEndpoint(reactor, 8000)
-peerFactory = PeerFactory()
+peerFactory = PeerFactory(mp.info_hash, com.peer_id)
 server.listen(peerFactory)
-
 
 def gotProtocol(p):
     p.sendHandshake()
