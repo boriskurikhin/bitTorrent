@@ -1,5 +1,5 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
-from twisted.internet.protocol import Protocol, ClientFactory
+from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
 from time import time
 import bitstring
@@ -14,9 +14,9 @@ import struct
 '''
 
 class PeerProtocol(Protocol):    
-    def __init__(self, factory, state="SEND_HANDSHAKE"):
+    def __init__(self, factory):
         self.factory = factory
-        self.has_handshaked = False
+        self.has_handshaked = False # important for new connections
         self.bitfield = None
 
         # 4 States that we maintain with each peer
@@ -24,6 +24,8 @@ class PeerProtocol(Protocol):
         self.is_interested = False
         self.am_choking = True
         self.am_interested = False
+
+        self.bytes_left = 0
 
     # Prints all currently connected peers
     def printPeers(self):
@@ -35,11 +37,11 @@ class PeerProtocol(Protocol):
             print('Peer', self.factory.peers[peer])
 
     def connectionMade(self):
-        self.factory.numberProtocols += 1 # increase the number of protocols
         peer = self.transport.getPeer()
-        print('Connected', peer)
+        print('Peer Connected', peer)
+        self.factory.numberProtocols += 1 # increase the number of protocols
         self.remote_ip = peer.host + ':' + str(peer.port)
-    
+
     def connectionLost(self, reason):
         self.factory.numberProtocols -= 1
         self.printPeers()
@@ -48,11 +50,9 @@ class PeerProtocol(Protocol):
     # TODO: Handle incoming data from peers
     def dataReceived(self, data):
         if self.has_handshaked == False:
-            if self.checkIncomingHandshake(data):
-                self.has_handshaked = True
-                self.add_peer()
-            else: self.transport.loseConnection() 
-        else: self.parseMessage(data)
+            self.checkIncomingHandshake(data)
+        else: 
+            self.parseMessage(data)
 
     # Message ID: 5
     def parseBitfield(self, hex):
@@ -82,8 +82,8 @@ class PeerProtocol(Protocol):
     def parseMessage(self, payload):
         hex_string = payload.hex()
         
-        mlen = int(hex[ : 8], 16)
-        mid = int(hex[8 : 10], 16)
+        mlen = int(hex_string[ : 8], 16)
+        mid = int(hex_string[8 : 10], 16)
 
         print('Message Id:', mid)
 
@@ -106,13 +106,13 @@ class PeerProtocol(Protocol):
 
         # Make sure we don't exchange handshakes with ourselves. 
         if self.client_id.upper() == self.factory.peer_id_hex.upper():
-            return False
+            self.transport.loseConnection()
 
         # The hash requested does not match
         if info_hash.upper() != self.factory.info_hash_hex.upper():
-            return False
+            self.transport.loseConnection()
 
-        return True
+        self.has_handshaked = True
 
     def add_peer(self):
         print('Added', self.client_id, 'to peer list')
@@ -121,6 +121,7 @@ class PeerProtocol(Protocol):
 
     # This function is triggered upon a new connection, it sends out a handshake
     def sendHandshake(self):
+        print('Sending handshake')
         payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 0, *self.factory.info_hash, *self.factory.peer_id])
         self.transport.write(payload)
     
@@ -129,7 +130,7 @@ class PeerProtocol(Protocol):
         payload = struct.pack('>iB', *[1, 2])
         self.transport.write(payload)
 
-class PeerFactory(ClientFactory):
+class PeerFactory(Factory):
     def __init__(self, info_h, peer_h, num_pieces, piece_length):
         
         self.info_hash = hash2ints(info_h)

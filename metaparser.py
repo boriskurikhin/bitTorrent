@@ -20,8 +20,12 @@ class MetaContent:
         print('%s:\t%s\n' % ('created', datetime.utcfromtimestamp(self.creation_date).strftime('%Y-%m-%d %H:%M:%S')))
         print('%s:\t%s' % ('# pieces', len(self.pieces)))
         print('%s:\t%s bytes' % ('piece len', self.piece_length))
-        print('%s:\t%s bytes' % ('last piece', self.last_piece_len))
-        print('%s:\t\t%s bytes' % ('total', self.length))
+        if not self.multi_file:
+            print('%s:\t%s bytes' % ('last piece', self.last_piece_len))
+            print('%s:\t\t%s bytes' % ('total', self.length))
+        else:
+            for f in self.files:
+                print('%s:\t(%d bytes)' % (f['path'], f['length']))
         print('%s:\t%s' % ('info-hash', self.info_hash.upper()))
     
     def parseFile(self, path_to_file):
@@ -71,7 +75,7 @@ class MetaContent:
             hex_string = self.pieces_hex[i : i + 40]
             self.pieces.append(hex_string)
         
-        # extract name
+        # extract name / dictionary as to where to store the files
         self.name = self.decoded['info']['name']
 
         if not self.multi_file:
@@ -79,7 +83,7 @@ class MetaContent:
             self.length = self.decoded['info']['length']
             self.last_piece_len = self.length - self.piece_length * (len(self.pieces) - 1)
         else:
-            #TODO: add implementation for multiple files
-            self.files = self.decoded['info']['files']
-       
+            self.files = []
+            for f in self.decoded['info']['files']:
+                self.files.append({ 'length': int(f['length']), 'path': f['path'][0] })
         self.file_info()

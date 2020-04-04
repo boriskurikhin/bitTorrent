@@ -10,6 +10,7 @@ def gotProtocol(p):
 
 def start_server(peers, num_pieces, piece_length):
     print(peers)
+    
     server = TCP4ServerEndpoint(reactor, 8000)
     peerFactory = PeerFactory(mp.info_hash, com.peer_id, num_pieces, piece_length)
     server.listen(peerFactory)
@@ -20,13 +21,16 @@ def start_server(peers, num_pieces, piece_length):
         point = TCP4ClientEndpoint(reactor, host, int(port))
         deferred = connectProtocol(point, PeerProtocol(peerFactory))
         deferred.addCallback(gotProtocol)
-    reactor.run()
+    
 
 # Main method
 if __name__ == '__main__':
     mp = MetaContent()
     mp.parseFile('test.torrent')
 
-    com = Communicator(mp)
-    peers = com.get_peers()
-    start_server(peers, len(mp.pieces), mp.piece_length)
+    # com = Communicator(mp)
+    # peers = com.get_peers()
+
+    # start_server(peers, len(mp.pieces), mp.piece_length)
+
+    # reactor.run()
