@@ -62,15 +62,15 @@ class PeerProtocol(Protocol):
         # check that bitfield is valid    
         binary = bitfield.bin
         
-        #valid = True
+        valid = True
 
         # Loop through overflow pieces
-        # for i in range(self.factory.num_pieces, len(binary)):
-        #     if binary[i] == '1': valid = False
+        for i in range(self.factory.num_pieces, len(binary)):
+            if binary[i] == '1': valid = False
 
         # Any overflowing pieces should be 0
-        # if not valid: 
-        #     self.transport.loseConnection()
+        if not valid: 
+            self.transport.loseConnection()
 
         # They don't have any pieces
         if binary.count('1') == 0:
@@ -78,6 +78,7 @@ class PeerProtocol(Protocol):
 
         self.bitfield = binary[ : len(binary)] + self.bitfield[len(binary) : ]
         
+        print('Verified Bitfield (' + self.remote_ip + ')')
         # We need to send interested message
         self.sendInterested()
     
@@ -88,7 +89,7 @@ class PeerProtocol(Protocol):
         mlen = int(hex_string[ : 8], 16)
         mid = int(hex_string[8 : 10], 16)
 
-        print('Received full message with id %d' % mid)
+        print('Handling id:', mid, '(' + self.remote_ip + ')')
 
         # The only one we got back so far
         if mid == 4:
@@ -102,7 +103,11 @@ class PeerProtocol(Protocol):
     # Parsing a message
     def receive_new_message(self, message):
         hex_string = message.hex()
+        
+        print('Message (' + self.remote_ip + ')')
+        print(self.payload_left )
         print(message)
+
         # if we aren't currently waiting on continuation of previous message
         if self.payload_left == 0:           
             mlen = int(hex_string[ : 8], 16) # in bytes
@@ -114,7 +119,7 @@ class PeerProtocol(Protocol):
                 self.receive_new_message(bytes.fromhex(hex_string[10 : ]))
             else:
                 # did we receive a full message, or more perhaps?
-                payload_length = len(hex_string[10:])
+                payload_length = len(hex_string[8 :]) # message id counts toward payload size
                 no_overflow = (payload_length >= (mlen * 2))
 
                 if no_overflow:
