@@ -3,3 +3,4 @@ We want to download a file
 1. We need to parse .torrent file
 2. Contact tracker and get list of peers who have the file
 3. Connect with peers, download file
+4. Profit
