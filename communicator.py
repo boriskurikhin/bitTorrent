@@ -1,6 +1,7 @@
 from UDP.initialConnection import udpConnectionHelper
 from UDP.announceConnection import udpAnnounceHelper
 from UDP.sender import Sender
+from twisted.internet import reactor, protocol
 from metaparser import MetaContent
 import urllib.parse
 import requests
@@ -87,8 +88,6 @@ class Communicator:
     '''
     def http_request(self):
         return None
-
-
     '''
         This function is responsible for 
         contacting the tracker and receiving a list
@@ -97,8 +96,9 @@ class Communicator:
     def get_peers(self):
         scheme = self.mf.announce.scheme
 
+        # get peers depending on the tracker type
         if scheme == 'udp': self.udp_request()
         elif scheme == 'http': self.http_request()
         else: raise Exception('Unknown Scheme: %s' % scheme)
 
-        print(self.peers)
+        return self.peers
