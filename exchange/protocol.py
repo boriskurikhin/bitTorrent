@@ -3,6 +3,7 @@ from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
 from exchange.piece import Piece
 from time import time
+from enum import Enum
 import bitstring
 import struct
 import math
@@ -15,15 +16,20 @@ import math
     p2p blockchain: https://github.com/benediktkr/ncpoc/blob/d3a3b48715ee9af664a59b49f4a4881352dd8fc8/network.py#L25
 '''
 
+class PeerState(Enum):
+    AWAITING_HANDSHAKE = 1
+    AWAITING_UNCHOKE = 2
+    AWAITING_DATA = 3
+
 class PeerProtocol(Protocol):    
     def __init__(self, factory):
         self.factory = factory
         self.has_handshaked = False # important for new connections
-        self.bitfield = '0' * self.factory.num_pieces
-
+        self.bitfield = bitstring.BitArray(self.factory.num_pieces)
+        self.state = PeerState.AWAITING_HANDSHAKE
         # 4 States that we maintain with each peer
-        self.is_choking = True
-        self.is_interested = False
+        # self.is_choking = True
+        # self.is_interested = False
         self.am_choking = True
         self.am_interested = False
 
@@ -54,30 +60,20 @@ class PeerProtocol(Protocol):
 
     # TODO: Handle incoming data from peers
     def dataReceived(self, data):
-        if not self.has_handshaked: self.checkIncomingHandshake(data)
+        if self.state == PeerState.AWAITING_HANDSHAKE: 
+            self.checkIncomingHandshake(data)
         else: self.receive_new_message(data)
 
     # Message ID: 5
     def parseBitfield(self, hex_str):
-        print('Parsing bitfield from', self.remote_ip)
-        # set this peer's bitfield value
-        bitfield = bitstring.BitArray('0x' + hex_str[10 : ])
-        # check that bitfield is valid    
-        binary = bitfield.bin
-        valid = True
-        # Loop through overflow pieces
-        for i in range(self.factory.num_pieces, len(binary)):
-            if binary[i] == '1': valid = False
-
-        # Any overflowing pieces should be 0
-        if not valid: 
-            self.transport.loseConnection()
+        # set this peer's (could be partial) bitfield value
+        update_bitfield = bitstring.BitArray('0x' + hex_str[10 : ])
 
         # They don't have any pieces
-        if binary.count('1') == 0:
+        if 1 not in update_bitfield:
             self.transport.loseConnection()
 
-        self.bitfield = binary[ : len(binary)] + self.bitfield[len(binary) : ]
+        self.bitfield = update_bitfield[:update_bitfield.len] + self.bitfield[update_bitfield.len:]
         
         print('Verified Bitfield (' + self.remote_ip + ')')
         # We need to send interested message
@@ -86,7 +82,7 @@ class PeerProtocol(Protocol):
     # Message ID: 4
     def parseHave(self, hex_str):
         piece_index = int(hex_str[10:], 16)
-        self.bitfield = self.bitfield[:piece_index] + '1' + self.bitfield[piece_index + 1:]
+        self.bitfield[piece_index] = 1
         self.sendInterested()
 
     # When we know we have the full message, we need to handle it
@@ -101,11 +97,11 @@ class PeerProtocol(Protocol):
         # The only one we got back so far
         if mid == 0:
             print('Received choke (' + self.remote_ip + ')')
-            self.is_choking = True
+            self.state = PeerState.AWAITING_UNCHOKE
             self.sendInterested() # If we're getting choked, try to get unchoked
         if mid == 1: 
             print('Received unchoke (' + self.remote_ip + ')')
-            self.is_choking = False
+            self.state = PeerState.AWAITING_DATA
             self.generate_request()
         if mid == 3: 
             pass
@@ -115,29 +111,34 @@ class PeerProtocol(Protocol):
             self.parseBitfield(hex_string)
     
     def generate_request(self):
-        if self.is_choking: 
+        if not self.state == PeerState.AWAITING_DATA: 
             return
-        # Find next block
-        for i in range(0, self.factory.num_pieces):
-            # Piece not full
-            if self.factory.pieces[i].get_state() != 2:
-                # Get block needed
-                next_block = self.factory.pieces[i].get_next_available_block()
 
-                while (i, next_block) in self.factory.requested:
-                    next_block = self.factory.pieces[i].get_next_available_block()
-                
-                if next_block == -1:
-                    continue
-                
-                self.factory.requested.add((i, next_block))
-                # Send request
-                print('Requesting piece (%d, %d) from ' % (i, next_block), '(' + self.remote_ip + ')')
-                self.transport.write(struct.pack('>iBiii', *[13, 6, i, next_block, 2 ** 14]))
-                break
+        # The whole file pieces
+        for i in range(0, self.factory.bitfield.len - 1):
+            if self.factory.bitfield[i] == 0 and self.bitfield[i] == 1:
+                offset = 0
+                for j in range(0, self.factory._blocks_per_piece):
+                    payload = struct.pack('>iBiii', *[13, 6, i, offset, self.factory._block_length])
+                    self.transport.write(payload)
+                    offset += self.factory._block_length
+                rem = self.factory.piece_length % self.factory._blocks_per_piece
+                if rem > 0:
+                    payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
+                    self.transport.write(payload)
+        
+        i = self.factory.bitfield.len - 1
+        offset = 0
+        for j in range(0, self.factory._blocks_per_last_piece):
+            payload = struct.pack('>iBiii', *[13, 6, i, offset, min(self.factory._block_length, self.factory.last_piece_length)])
+            self.transport.write(payload)
+            offset += min(self.factory._block_length, self.factory.last_piece_length)
+        rem = self.factory.last_piece_length % self.factory._blocks_per_last_piece
+        if rem > 0 and factory._blocks_per_piece > 1:
+            payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
+
     # Parsing a message
     def receive_new_message(self, message):
-        
         if len(message) == 0:
             return
         
@@ -210,14 +211,14 @@ class PeerProtocol(Protocol):
         if info_hash.upper() != self.factory.info_hash_hex.upper():
             self.transport.loseConnection()
 
-        self.has_handshaked = True
+        self.state = PeerState.AWAITING_UNCHOKE
         self.add_peer()
+        self.sendInterested()
 
         # do we have more data? 
         payload_len -= 136
 
         if payload_len > 0:
-        #    print ('Sent data along with handshake!', bytes.fromhex(hex_string[136:]))
             self.receive_new_message(bytes.fromhex(hex_string[136:]))
 
     def add_peer(self):
@@ -231,13 +232,13 @@ class PeerProtocol(Protocol):
     
     # We are interested
     def sendInterested(self):
-        if not self.is_interested or self.is_choking:
-            self.is_interested = True
+        if self.state == PeerState.AWAITING_UNCHOKE:
             payload = struct.pack('>iB', *[1, 2])
             self.transport.write(payload)
+            print('Interested')
 
 class PeerFactory(Factory):
-    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, piece_hashes):
+    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length):
         self.info_hash = hash2ints(info_h)
         self.peer_id = hash2ints(peer_h)
 
@@ -245,30 +246,21 @@ class PeerFactory(Factory):
         self.peer_id_hex = peer_h
 
         self.num_pieces = num_pieces # num total pieces
+        
         self.piece_length = piece_length # length of one piece in bytes
-        self.last_piece_length = last_piece_length
-        self.piece_hashes = piece_hashes # hashes of all pieces
+        self.last_piece_length = last_piece_length # length of last piece in bytes
 
-        self._block_length = 2 ** 16
-        self._blocks_per_piece = self.piece_length // self._block_length
-        self._blocks_per_last_piece = self.last_piece_length // self._block_length
+        self._block_length = 2 ** 14
+        self._blocks_per_piece = self.piece_length // self._block_length # num blocks per reg piece
         
-        if self.piece_length - (self._block_length * self._blocks_per_piece) != 0:
-            self._blocks_per_piece += 1
-        if self.last_piece_length - (self._block_length * self._blocks_per_last_piece) != 0:
-            self._blocks_per_last_piece += 1
-
-        self.pieces = []
-
-        for i in range(0, self.num_pieces - 1):
-            self.pieces.append(Piece(self._blocks_per_piece, self.piece_length, i))
+        if self.last_piece_length < self._block_length:
+            self._blocks_per_last_piece = 1
+        else:
+            self._blocks_per_last_piece = self.last_piece_length // self._block_length # num blocks per last piece
         
-        self.pieces.append(Piece(self._blocks_per_last_piece, self.last_piece_length, self.num_pieces - 1))
+        self.bitfield = bitstring.BitArray(self.num_pieces)
 
         self.numberProtocols = 0
-        
-        # TODO: this is very inefficient
-        self.requested = set()
     
     def startFactory(self):
         self.peers = {}

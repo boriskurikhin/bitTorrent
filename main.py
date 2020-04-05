@@ -8,11 +8,11 @@ from twisted.internet.endpoints import connectProtocol
 def gotProtocol(p):
     p.sendHandshake()
 
-def start_server(peers, num_pieces, piece_length, last_piece_length, piece_hashes):
+def start_server(peers, num_pieces, piece_length, last_piece_length):
     print(peers)
     
     server = TCP4ServerEndpoint(reactor, 8000)
-    peerFactory = PeerFactory(mp.info_hash, com.peer_id, num_pieces, piece_length, last_piece_length, piece_hashes)
+    peerFactory = PeerFactory(mp.info_hash, com.peer_id, num_pieces, piece_length, last_piece_length)
     server.listen(peerFactory)
 
     for peer in peers:
@@ -31,6 +31,6 @@ if __name__ == '__main__':
     com = Communicator(mp, False)
     peers = com.get_peers()
 
-    start_server(peers, len(mp.pieces), mp.piece_length, mp.last_piece_len, mp.pieces)
+    start_server(peers, len(mp.pieces), mp.piece_length, mp.last_piece_len)
 
     reactor.run()
