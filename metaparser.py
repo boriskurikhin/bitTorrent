@@ -20,10 +20,9 @@ class MetaContent:
         print('%s:\t%s\n' % ('created', datetime.utcfromtimestamp(self.creation_date).strftime('%Y-%m-%d %H:%M:%S')))
         print('%s:\t%s' % ('# pieces', len(self.pieces)))
         print('%s:\t%s bytes' % ('piece len', self.piece_length))
-        if not self.multi_file:
-            print('%s:\t%s bytes' % ('last piece', self.last_piece_len))
-            print('%s:\t\t%s bytes' % ('total', self.length))
-        else:
+        print('%s:\t%s bytes' % ('last piece', self.last_piece_len))
+        print('%s:\t\t%s bytes' % ('total', self.length))
+        if self.multi_file:
             print('-----(# %d files)------' % (len(self.files)))
             for f in self.files:
                 print('%s:\t(%d bytes)' % (f['path'], f['length']))
@@ -90,4 +89,5 @@ class MetaContent:
             for f in self.decoded['info']['files']:
                 self.length += int(f['length'])
                 self.files.append({ 'length': int(f['length']), 'path': f['path'][0] })
+            self.last_piece_len = self.length - self.piece_length * (len(self.pieces) - 1)
         self.file_info()

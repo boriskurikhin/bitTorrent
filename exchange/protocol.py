@@ -1,10 +1,11 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
+from exchange.piece import Piece
 from time import time
-import math
 import bitstring
 import struct
+import math
 
 '''
     This is how we will communicate with peers
@@ -101,18 +102,39 @@ class PeerProtocol(Protocol):
         if mid == 0:
             print('Received choke (' + self.remote_ip + ')')
             self.is_choking = True
+            self.sendInterested() # If we're getting choked, try to get unchoked
         if mid == 1: 
             print('Received unchoke (' + self.remote_ip + ')')
             self.is_choking = False
-            # TODO: send piece request
+            self.generate_request()
         if mid == 3: 
             pass
         if mid == 4:
             self.parseHave(hex_string)
         if mid == 5:
             self.parseBitfield(hex_string)
+    
+    def generate_request(self):
+        if self.is_choking: 
+            return
+        # Find next block
+        for i in range(0, self.factory.num_pieces):
+            # Piece not full
+            if self.factory.pieces[i].get_state() != 2:
+                # Get block needed
+                next_block = self.factory.pieces[i].get_next_available_block()
 
-
+                while (i, next_block) in self.factory.requested:
+                    next_block = self.factory.pieces[i].get_next_available_block()
+                
+                if next_block == -1:
+                    continue
+                
+                self.factory.requested.add((i, next_block))
+                # Send request
+                print('Requesting piece (%d, %d) from ' % (i, next_block), '(' + self.remote_ip + ')')
+                self.transport.write(struct.pack('>iBiii', *[13, 6, i, next_block, 2 ** 14]))
+                break
     # Parsing a message
     def receive_new_message(self, message):
         
@@ -209,28 +231,48 @@ class PeerProtocol(Protocol):
     
     # We are interested
     def sendInterested(self):
-        if not self.is_interested:
+        if not self.is_interested or self.is_choking:
             self.is_interested = True
             payload = struct.pack('>iB', *[1, 2])
             self.transport.write(payload)
 
 class PeerFactory(Factory):
-    def __init__(self, info_h, peer_h, num_pieces, piece_length):
-        
+    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, piece_hashes):
         self.info_hash = hash2ints(info_h)
         self.peer_id = hash2ints(peer_h)
 
         self.info_hash_hex = info_h
         self.peer_id_hex = peer_h
 
-        self.num_pieces = num_pieces
-        self.pice_length = piece_length
+        self.num_pieces = num_pieces # num total pieces
+        self.piece_length = piece_length # length of one piece in bytes
+        self.last_piece_length = last_piece_length
+        self.piece_hashes = piece_hashes # hashes of all pieces
+
+        self._block_length = 2 ** 16
+        self._blocks_per_piece = self.piece_length // self._block_length
+        self._blocks_per_last_piece = self.last_piece_length // self._block_length
+        
+        if self.piece_length - (self._block_length * self._blocks_per_piece) != 0:
+            self._blocks_per_piece += 1
+        if self.last_piece_length - (self._block_length * self._blocks_per_last_piece) != 0:
+            self._blocks_per_last_piece += 1
+
+        self.pieces = []
+
+        for i in range(0, self.num_pieces - 1):
+            self.pieces.append(Piece(self._blocks_per_piece, self.piece_length, i))
+        
+        self.pieces.append(Piece(self._blocks_per_last_piece, self.last_piece_length, self.num_pieces - 1))
 
         self.numberProtocols = 0
-        self.have = '0' * self.num_pieces # we don't have shit lol
+        
+        # TODO: this is very inefficient
+        self.requested = set()
     
     def startFactory(self):
         self.peers = {}
+       
 
     def buildProtocol(self, addr):
         return PeerProtocol(self)
