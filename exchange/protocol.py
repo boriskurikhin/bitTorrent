@@ -174,10 +174,10 @@ class PeerProtocol(Protocol):
             self.transport.write(payload)
             offset += min(self.factory._block_length, self.factory.last_piece_length)
         rem = self.factory.last_piece_length % self.factory._blocks_per_last_piece
-        if rem > 0 and factory._blocks_per_piece > 1:
+        if rem > 0 and self.factory._blocks_per_piece > 1:
             payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
         
-        self.generateRequest()
+        # self.generateRequest()
 
     # Parsing a message
     def receiveNewMessage(self, message):

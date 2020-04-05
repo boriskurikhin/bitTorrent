@@ -29,8 +29,8 @@ if __name__ == '__main__':
     mp.parseFile('test.torrent')
 
     com = Communicator(mp, False)
-    # peers = com.get_peers()
+    peers = com.get_peers()
 
-    # start_server(peers, len(mp.pieces), mp.piece_length, mp.last_piece_len)
+    start_server(peers, len(mp.pieces), mp.piece_length, mp.last_piece_len)
 
-    # reactor.run()
+    reactor.run()
