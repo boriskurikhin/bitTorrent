@@ -26,6 +26,8 @@ class PeerProtocol(Protocol):
         self.am_choking = True
         self.am_interested = False
 
+        self.keep_alive = True
+
         self.payload_left = 0
         self.received = b''
 
@@ -56,14 +58,12 @@ class PeerProtocol(Protocol):
 
     # Message ID: 5
     def parseBitfield(self, hex_str):
+        print('Parsing bitfield from', self.remote_ip)
         # set this peer's bitfield value
         bitfield = bitstring.BitArray('0x' + hex_str[10 : ])
-
         # check that bitfield is valid    
         binary = bitfield.bin
-        
         valid = True
-
         # Loop through overflow pieces
         for i in range(self.factory.num_pieces, len(binary)):
             if binary[i] == '1': valid = False
@@ -82,6 +82,12 @@ class PeerProtocol(Protocol):
         # We need to send interested message
         self.sendInterested()
     
+    # Message ID: 4
+    def parseHave(self, hex_str):
+        piece_index = int(hex_str[10:], 16)
+        self.bitfield = self.bitfield[:piece_index] + '1' + self.bitfield[piece_index + 1:]
+        self.sendInterested()
+
     # When we know we have the full message, we need to handle it
     def handle_full_message(self, payload):
         hex_string = payload.hex()
@@ -92,11 +98,18 @@ class PeerProtocol(Protocol):
         print('Handling id:', mid, '(' + self.remote_ip + ')')
 
         # The only one we got back so far
-        if mid == 4:
+        if mid == 0:
+            print('Received choke (' + self.remote_ip + ')')
+            self.is_choking = True
+        if mid == 1: 
+            print('Received unchoke (' + self.remote_ip + ')')
+            self.is_choking = False
+            # TODO: send piece request
+        if mid == 3: 
             pass
-            #print('Recieved full a HAVE message')
+        if mid == 4:
+            self.parseHave(hex_string)
         if mid == 5:
-            #print('Received full a BITFIELD message')
             self.parseBitfield(hex_string)
 
 
@@ -120,6 +133,10 @@ class PeerProtocol(Protocol):
             if payload_size == 1:
                 self.handle_full_message(bytes.fromhex(hex_string[ : 10]))
                 self.receive_new_message(bytes.fromhex(hex_string[10 : ]))
+            elif payload_size == 0:
+                # It's a keep alive
+                # TODO: do something with this
+                self.keep_alive = True
             else:
                 # did we receive a full message, or more perhaps?
                 payload_length = len(hex_string[8:]) # counts hex chars (message type + payload)
@@ -178,7 +195,7 @@ class PeerProtocol(Protocol):
         payload_len -= 136
 
         if payload_len > 0:
-            print ('Sent data along with handshake!', bytes.fromhex(hex_string[136:]))
+        #    print ('Sent data along with handshake!', bytes.fromhex(hex_string[136:]))
             self.receive_new_message(bytes.fromhex(hex_string[136:]))
 
     def add_peer(self):
@@ -192,8 +209,10 @@ class PeerProtocol(Protocol):
     
     # We are interested
     def sendInterested(self):
-        payload = struct.pack('>iB', *[1, 2])
-        self.transport.write(payload)
+        if not self.is_interested:
+            self.is_interested = True
+            payload = struct.pack('>iB', *[1, 2])
+            self.transport.write(payload)
 
 class PeerFactory(Factory):
     def __init__(self, info_h, peer_h, num_pieces, piece_length):
