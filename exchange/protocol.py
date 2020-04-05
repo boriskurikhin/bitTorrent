@@ -15,22 +15,18 @@ import math
     p2p blockchain: https://github.com/benediktkr/ncpoc/blob/d3a3b48715ee9af664a59b49f4a4881352dd8fc8/network.py#L25
 '''
 
-class PeerState(Enum):
-    AWAITING_HANDSHAKE = 1
-    AWAITING_UNCHOKE = 2
-    AWAITING_DATA = 3
-
 class PeerProtocol(Protocol):    
     def __init__(self, factory):
         self.factory = factory
         self.has_handshaked = False # important for new connections
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
-        self.state = PeerState.AWAITING_HANDSHAKE
+        self.have_handshaked = False
         # 4 States that we maintain with each peer
         # self.is_choking = True
         # self.is_interested = False
         self.am_choking = True
         self.am_interested = False
+        self.waiting_from_me = bitstring.BitArray(self.factory.num_pieces)
 
         self.keep_alive = True
 
@@ -54,13 +50,10 @@ class PeerProtocol(Protocol):
 
     def connectionLost(self, reason):
         self.factory.numberProtocols -= 1
-        self.printPeers()
-        # print('Disconnection')
 
     # TODO: Handle incoming data from peers
     def dataReceived(self, data):
-        if self.state == PeerState.AWAITING_HANDSHAKE: 
-            self.checkIncomingHandshake(data)
+        if not self.have_handshaked: self.checkIncomingHandshake(data)
         else: self.receiveNewMessage(data)
 
     # Message ID: 5
@@ -80,8 +73,9 @@ class PeerProtocol(Protocol):
     
     # Message ID: 4
     def parseHave(self, hex_str):
-        piece_index = int(hex_str[10:], 16)
+        piece_index = int(hex_str[10:10+8], 16)
         self.bitfield[piece_index] = 1
+        # if we don't have this piece, and we haven't asked anyone
         self.sendInterested()
 
     # When we know we have the full message, we need to handle it
@@ -96,11 +90,11 @@ class PeerProtocol(Protocol):
         # The only one we got back so far
         if mid == 0:
             # print('Received choke (' + self.remote_ip + ')')
-            self.state = PeerState.AWAITING_UNCHOKE
             self.sendInterested() # If we're getting choked, try to get unchoked
+            self.am_choking = True
         elif mid == 1: 
             # print('Received unchoke (' + self.remote_ip + ')')
-            self.state = PeerState.AWAITING_DATA
+            self.am_choking = False
             self.generateRequest()
         elif mid == 3: 
             pass
@@ -111,7 +105,7 @@ class PeerProtocol(Protocol):
         elif mid == 6:
             pass
         elif mid == 7:
-            self.parse_piece(hex_string, message_length)
+            self.parse_block(hex_string, message_length)
         elif mid == 8:
             pass
         elif mid == 9:
@@ -119,74 +113,82 @@ class PeerProtocol(Protocol):
         else:
             self.checkIncomingHandshake(payload)
 
-    def parse_piece(self, hex_string, message_length):
+    def get_block(self, pi, bi):
+        return self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi]
+
+    def have_piece(self, pi):
+        for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + self.factory.blocks_in_whole_piece):
+            if not self.factory.bitfield[i]:
+                return False
+        return True
+    
+    def set_block(self, pi, bi, val):
+        self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi] = val
+
+    def parse_block(self, hex_string, message_length):
         length_of_block = message_length - 9 # 9 bytes are reserved for response info
+
+        if length_of_block % self.factory.BLOCK_LEN != 0:
+            return
         
         piece_index = int(hex_string[10:18], 16)
         byte_offset = int(hex_string[18:18+8], 16)
+        block_index = byte_offset // self.factory.BLOCK_LEN
 
-        if self.factory.bitfield[piece_index] == 1:
+        if self.get_block(piece_index, block_index) or self.have_piece(piece_index):
             return
 
-        offset_index = byte_offset // self.factory._block_length
+        self.factory.data[piece_index][block_index] = bytes.fromhex(hex_string[18 + 8:])
+        self.set_block(piece_index, block_index, 1)
 
-        self.factory.blocks[piece_index][offset_index] = bytes.fromhex(hex_string[18 + 8:])
-        self.factory.data[piece_index][offset_index] = 1
-
-        # print(self.factory.data[piece_index], piece_index)
-
-        if self.factory.data[piece_index].count(0) == 0:
-            self.factory.bitfield[piece_index] = 1
-            # print('Index %d is done downloading' % piece_index)
-            self.writeToFile(piece_index)
-
-    def writeToFile(self, pieceIndex):
-        data = b''.join(self.factory.blocks[pieceIndex])
+        if piece_index != self.factory.num_pieces - 1:
+            if self.have_piece(piece_index):
+                self.factory.pieces_need -= 1
+                #print('Got piece %d/%d' % (piece_index, self.factory.num_pieces - 1))
+                #print('%d pieces still need' % (self.factory.pieces_need))
+                self.writePieceToFile(piece_index)
+                self.generateRequest()
+        else:
+            if self.have_piece(piece_index):
+                self.factory.pieces_need -= 1
+                #print('Got last piece %d/%d' % (piece_index, self.factory.num_pieces - 1))
+                #print('%d pieces still need' % (self.factory.pieces_need))
+                self.writePieceToFile(piece_index)
+                self.generateRequest()
         
-        self.factory.blocks[pieceIndex] = []
-        self.factory.data[pieceIndex] = []
+        if self.factory.pieces_need <= 1:
+            print('Aborting connection')
+            self.transport.abortConnection()
 
-        #check hash
-        f = open('downloads/' + self.factory.file_name, 'wb')
-        f.seek(pieceIndex * self.factory.piece_length)
-        f.write(data)
-        f.close()
-
-        print('wrote %d/%d to file' % (pieceIndex, self.factory.num_pieces))
-
-        # if pieceIndex == self.factory.num_pieces - 1:
-        #     self.transport.loseConnection()
+    def writePieceToFile(self, pi):
+        self.factory.file.seek(pi * self.factory.piece_length)
+        print('Writing %d blocks of piece %d to file...' % (len(self.factory.data[pi]), pi))
+        for bi in range(len(self.factory.data[pi])):
+            self.factory.file.write(self.factory.data[pi][bi])
 
     
     def generateRequest(self):
-        if not self.state == PeerState.AWAITING_DATA: 
+        if self.factory.pieces_need <= 0:
             return
+        # go through each piece
+        for pi in range(self.factory.num_pieces):
+            if self.have_piece(pi): continue
+            if pi != self.factory.num_pieces - 1:
+                for bi in range(self.factory.blocks_in_whole_piece):
+                    if not self.get_block(pi, bi):
+                        req = struct.pack('>iBiii', *[13, 6, pi, bi * self.factory.BLOCK_LEN, self.factory.BLOCK_LEN])
+                        self.transport.write(req)
+            else:
+                offset = 0
+                for bi in range(self.factory.blocks_in_last_piece):
+                    if not self.get_block(pi, bi):
+                        if self.factory.last_piece_length - offset <= self.factory.BLOCK_LEN: req_size = self.factory.last_piece_length - offset
+                        else: req_size = self.factory.BLOCK_LEN
+                        req = struct.pack('>iBiii', *[13, 6, pi, bi * self.factory.BLOCK_LEN, req_size])
+                        self.transport.write(req)
+                    offset += self.factory.BLOCK_LEN
+        # self.generateRequest()
 
-        # The whole file pieces
-        for i in range(0, self.factory.bitfield.len - 1):
-            if self.factory.bitfield[i] == 0 and self.bitfield[i] == 1:
-                offset = 0 # offset in bytes
-                for j in range(0, self.factory._blocks_per_piece):
-                    if self.factory.data[i][j] == 0:
-                        payload = struct.pack('>iBiii', *[13, 6, i, offset, self.factory._block_length])
-                        self.transport.write(payload)
-                    offset += self.factory._block_length
-                rem = self.factory.piece_length % self.factory._blocks_per_piece
-                if rem > 0:
-                    payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
-                    self.transport.write(payload)
-        
-        i = self.factory.bitfield.len - 1
-        offset = 0
-        for j in range(0, self.factory._blocks_per_last_piece):
-            if self.factory.data[i][j] == 0:
-                payload = struct.pack('>iBiii', *[13, 6, i, offset, min(self.factory._block_length, self.factory.last_piece_length)])
-                self.transport.write(payload)
-            offset += min(self.factory._block_length, self.factory.last_piece_length)
-        rem = self.factory.last_piece_length % self.factory._blocks_per_last_piece
-        if rem > 0 and self.factory._blocks_per_piece > 1:
-            payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
-        
     # Parsing a message
     def receiveNewMessage(self, message):
         if len(message) == 0:
@@ -262,7 +264,6 @@ class PeerProtocol(Protocol):
         if info_hash.upper() != self.factory.info_hash_hex.upper():
             self.transport.loseConnection()
 
-        self.state = PeerState.AWAITING_UNCHOKE
         self.add_peer()
         self.sendInterested()
 
@@ -271,8 +272,9 @@ class PeerProtocol(Protocol):
 
         if payload_len > 0:
             self.receiveNewMessage(bytes.fromhex(hex_string[136:]))
-
+        
     def add_peer(self):
+        self.have_handshaked = True
         self.factory.peers[self.client_id] = (self.remote_ip, time())
         self.printPeers()
 
@@ -283,10 +285,9 @@ class PeerProtocol(Protocol):
     
     # We are interested
     def sendInterested(self):
-        if self.state == PeerState.AWAITING_UNCHOKE:
-            payload = struct.pack('>iB', *[1, 2])
-            self.transport.write(payload)
-            # print('Interested')
+        payload = struct.pack('>iB', *[1, 2])
+        self.transport.write(payload)
+        # print('Interested')
 
 class PeerFactory(Factory):
     def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, file_name):
@@ -301,35 +302,40 @@ class PeerFactory(Factory):
         self.piece_length = piece_length # length of one piece in bytes
         self.last_piece_length = last_piece_length # length of last piece in bytes
 
-        self._block_length = 2 ** 14
-        self._blocks_per_piece = self.piece_length // self._block_length # num blocks per reg piece
-
+        self.BLOCK_LEN = 2 ** 14
         self.file_name = file_name
+        self.file = open('downloads/' + self.file_name, 'wb')
+        self.pieces_need = self.num_pieces
         
-        if self.last_piece_length < self._block_length: self._blocks_per_last_piece = 1
-        else: self._blocks_per_last_piece = self.last_piece_length // self._block_length # num blocks per last piece
-        
-        self.data = []
-        self.blocks = []
+        # TODO: add logic for this
+        assert self.piece_length % self.BLOCK_LEN == 0, 'piece len not divisible by block size'
 
-        for i in range(0, self.num_pieces - 1):
-            b = self._blocks_per_piece
-            if self.piece_length % self._blocks_per_piece > 0: b += 1
-            self.data.append(bitstring.BitArray(b))
-            self.blocks.append([b''] * b)
+        self.blocks_in_whole_piece = self.piece_length // self.BLOCK_LEN
+        self.blocks_in_last_piece = int(math.ceil(self.last_piece_length / self.BLOCK_LEN))
+
+        # print(self.num_pieces, self.piece_length, self.BLOCK_LEN, self.blocks_in_whole_piece, self.blocks_in_last_piece)
+        # raise Exception('Debug')
+
+        self.data = []
+
+        for i in range(self.num_pieces - 1):
+            blocks = []
+            for j in range(self.blocks_in_whole_piece):
+                blocks.append(b'')
+            self.data.append(blocks)
+        blocks = []
+        for i in range(self.blocks_in_last_piece):
+            blocks.append(b'')
+        self.data.append(blocks)
         
-        b = self._blocks_per_last_piece
-        if self.piece_length % self._blocks_per_last_piece > 0: b += 1
-        self.data.append(bitstring.BitArray(b))
-        self.blocks.append([b''] * b)
-        
-        self.bitfield = bitstring.BitArray(self.num_pieces)
+        self.pieces = bitstring.BitArray(self.num_pieces)
+        self.bitfield = bitstring.BitArray((self.num_pieces - 1) * self.blocks_in_whole_piece + self.blocks_in_last_piece)
+        # self.requested = bitstring.BitArray(self.num_pieces)
         
         self.numberProtocols = 0
     
     def startFactory(self):
         self.peers = {}
        
-
     def buildProtocol(self, addr):
         return PeerProtocol(self)
