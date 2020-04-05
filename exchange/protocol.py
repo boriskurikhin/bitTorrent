@@ -98,18 +98,26 @@ class PeerProtocol(Protocol):
             # print('Received choke (' + self.remote_ip + ')')
             self.state = PeerState.AWAITING_UNCHOKE
             self.sendInterested() # If we're getting choked, try to get unchoked
-        if mid == 1: 
+        elif mid == 1: 
             # print('Received unchoke (' + self.remote_ip + ')')
             self.state = PeerState.AWAITING_DATA
             self.generateRequest()
-        if mid == 3: 
+        elif mid == 3: 
             pass
-        if mid == 4:
+        elif mid == 4:
             self.parseHave(hex_string)
-        if mid == 5:
+        elif mid == 5:
             self.parseBitfield(hex_string)
-        if mid == 7:
+        elif mid == 6:
+            pass
+        elif mid == 7:
             self.parse_piece(hex_string, message_length)
+        elif mid == 8:
+            pass
+        elif mid == 9:
+            pass
+        else:
+            self.checkIncomingHandshake(payload)
 
     def parse_piece(self, hex_string, message_length):
         length_of_block = message_length - 9 # 9 bytes are reserved for response info
@@ -159,8 +167,9 @@ class PeerProtocol(Protocol):
             if self.factory.bitfield[i] == 0 and self.bitfield[i] == 1:
                 offset = 0 # offset in bytes
                 for j in range(0, self.factory._blocks_per_piece):
-                    payload = struct.pack('>iBiii', *[13, 6, i, offset, self.factory._block_length])
-                    self.transport.write(payload)
+                    if self.factory.data[i][j] == 0:
+                        payload = struct.pack('>iBiii', *[13, 6, i, offset, self.factory._block_length])
+                        self.transport.write(payload)
                     offset += self.factory._block_length
                 rem = self.factory.piece_length % self.factory._blocks_per_piece
                 if rem > 0:
@@ -170,15 +179,14 @@ class PeerProtocol(Protocol):
         i = self.factory.bitfield.len - 1
         offset = 0
         for j in range(0, self.factory._blocks_per_last_piece):
-            payload = struct.pack('>iBiii', *[13, 6, i, offset, min(self.factory._block_length, self.factory.last_piece_length)])
-            self.transport.write(payload)
+            if self.factory.data[i][j] == 0:
+                payload = struct.pack('>iBiii', *[13, 6, i, offset, min(self.factory._block_length, self.factory.last_piece_length)])
+                self.transport.write(payload)
             offset += min(self.factory._block_length, self.factory.last_piece_length)
         rem = self.factory.last_piece_length % self.factory._blocks_per_last_piece
         if rem > 0 and self.factory._blocks_per_piece > 1:
             payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
         
-        # self.generateRequest()
-
     # Parsing a message
     def receiveNewMessage(self, message):
         if len(message) == 0:
@@ -241,6 +249,7 @@ class PeerProtocol(Protocol):
         # Extract a bunch of data from the payload
         pstrlen = int(hex_string[ : 2], 16)
         pstr = bytes.fromhex(hex_string[2 : 2 + 2 * 19]).decode('utf-8') #ends at 40
+
         reserved = int(hex_string[40  :40 + 2 * 8])
         info_hash = hex_string[56 : 56 + 40]
         self.client_id = hex_string[56 + 40 : 56 + 40 + 40]
