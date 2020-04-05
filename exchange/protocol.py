@@ -1,7 +1,6 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
-from exchange.piece import Piece
 from time import time
 from enum import Enum
 import bitstring
@@ -49,20 +48,20 @@ class PeerProtocol(Protocol):
 
     def connectionMade(self):
         peer = self.transport.getPeer()
-        print('Peer Connected', peer)
+        # print('Peer Connected', peer)
         self.factory.numberProtocols += 1 # increase the number of protocols
         self.remote_ip = peer.host + ':' + str(peer.port)
 
     def connectionLost(self, reason):
         self.factory.numberProtocols -= 1
         self.printPeers()
-        print('Disconnection')
+        # print('Disconnection')
 
     # TODO: Handle incoming data from peers
     def dataReceived(self, data):
         if self.state == PeerState.AWAITING_HANDSHAKE: 
             self.checkIncomingHandshake(data)
-        else: self.receive_new_message(data)
+        else: self.receiveNewMessage(data)
 
     # Message ID: 5
     def parseBitfield(self, hex_str):
@@ -75,7 +74,7 @@ class PeerProtocol(Protocol):
 
         self.bitfield = update_bitfield[:update_bitfield.len] + self.bitfield[update_bitfield.len:]
         
-        print('Verified Bitfield (' + self.remote_ip + ')')
+        # print('Verified Bitfield (' + self.remote_ip + ')')
         # We need to send interested message
         self.sendInterested()
     
@@ -86,38 +85,72 @@ class PeerProtocol(Protocol):
         self.sendInterested()
 
     # When we know we have the full message, we need to handle it
-    def handle_full_message(self, payload):
+    def handleFullMessage(self, payload):
         hex_string = payload.hex()
        
         message_length = int(hex_string[ : 8], 16)
         mid = int(hex_string[8 : 10], 16)
 
-        print('Handling id:', mid, '(' + self.remote_ip + ')')
+        # print('Handling id:', mid, '(' + self.remote_ip + ')')
 
         # The only one we got back so far
         if mid == 0:
-            print('Received choke (' + self.remote_ip + ')')
+            # print('Received choke (' + self.remote_ip + ')')
             self.state = PeerState.AWAITING_UNCHOKE
             self.sendInterested() # If we're getting choked, try to get unchoked
         if mid == 1: 
-            print('Received unchoke (' + self.remote_ip + ')')
+            # print('Received unchoke (' + self.remote_ip + ')')
             self.state = PeerState.AWAITING_DATA
-            self.generate_request()
+            self.generateRequest()
         if mid == 3: 
             pass
         if mid == 4:
             self.parseHave(hex_string)
         if mid == 5:
             self.parseBitfield(hex_string)
+        if mid == 7:
+            self.parse_piece(hex_string, message_length)
+
+    def parse_piece(self, hex_string, message_length):
+        length_of_block = message_length - 9 # 9 bytes are reserved for response info
+        
+        piece_index = int(hex_string[10:18], 16)
+        byte_offset = int(hex_string[18:18+8], 16)
+        offset_index = byte_offset // self.factory._block_length
+
+        f = open('downloads/' + self.factory.file_name, 'wb')
+        f.seek(piece_index * self.factory.piece_length + byte_offset)
+        f.write(bytes.fromhex(hex_string[18+8:18+8+(length_of_block * 2)]))
+        f.close()
+
+        self.factory.data[piece_index][offset_index] = 1
+
+        if self.factory.data[piece_index].count(0) == 0:
+            self.factory.bitfield[piece_index] = 1
+            # self.writeToFile(piece_index)
+
+    def writeToFile(self, pieceIndex):
+        data = b''.join(self.factory.blocks[pieceIndex])
+        
+        self.factory.blocks[pieceIndex] = []
+        self.factory.data[pieceIndex] = []
+
+        #check hash
+        f = open('downloads/' + self.factory.file_name, 'wb')
+        f.seek(pieceIndex * self.factory.piece_length)
+        f.write(data)
+        f.close()
+
+        print('wrote to file')
     
-    def generate_request(self):
+    def generateRequest(self):
         if not self.state == PeerState.AWAITING_DATA: 
             return
 
         # The whole file pieces
         for i in range(0, self.factory.bitfield.len - 1):
             if self.factory.bitfield[i] == 0 and self.bitfield[i] == 1:
-                offset = 0
+                offset = 0 # offset in bytes
                 for j in range(0, self.factory._blocks_per_piece):
                     payload = struct.pack('>iBiii', *[13, 6, i, offset, self.factory._block_length])
                     self.transport.write(payload)
@@ -138,15 +171,15 @@ class PeerProtocol(Protocol):
             payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
 
     # Parsing a message
-    def receive_new_message(self, message):
+    def receiveNewMessage(self, message):
         if len(message) == 0:
             return
         
         hex_string = message.hex() # entire message in hex
 
-        print('From (' + self.remote_ip + ')')
-        print('Payload left', self.payload_left )
-        print('Message', message)
+        # print('From (' + self.remote_ip + ')')
+        # print('Payload left', self.payload_left )
+        # print('Message', message)
 
         # if we aren't currently waiting on continuation of previous message
         if self.payload_left == 0:           
@@ -154,8 +187,8 @@ class PeerProtocol(Protocol):
 
             # fixed size message, no payload
             if payload_size == 1:
-                self.handle_full_message(bytes.fromhex(hex_string[ : 10]))
-                self.receive_new_message(bytes.fromhex(hex_string[10 : ]))
+                self.handleFullMessage(bytes.fromhex(hex_string[ : 10]))
+                self.receiveNewMessage(bytes.fromhex(hex_string[10 : ]))
             elif payload_size == 0:
                 # It's a keep alive
                 # TODO: do something with this
@@ -166,8 +199,8 @@ class PeerProtocol(Protocol):
                 no_overflow = (payload_length >= (payload_size * 2))
 
                 if no_overflow:
-                    self.handle_full_message(bytes.fromhex(hex_string[ : (payload_size * 2) + 8])) # send full message to responding
-                    self.receive_new_message(bytes.fromhex(hex_string[(payload_size * 2) + 8 : ])) # send the rest for a re-parse
+                    self.handleFullMessage(bytes.fromhex(hex_string[ : (payload_size * 2) + 8])) # send full message to responding
+                    self.receiveNewMessage(bytes.fromhex(hex_string[(payload_size * 2) + 8 : ])) # send the rest for a re-parse
                 else:
                     # The beginning chunk of a message
                     self.payload_left = (payload_size * 2) - payload_length
@@ -179,13 +212,13 @@ class PeerProtocol(Protocol):
 
             if no_overflow:
                 self.received += bytes.fromhex(hex_string[ : self.payload_left])         
-                self.handle_full_message(self.received) # parse current
+                self.handleFullMessage(self.received) # parse current
                 
                 payload_end = self.payload_left
                 self.payload_left = 0
                 self.received = b''
                 
-                self.receive_new_message(bytes.fromhex(hex_string[payload_end : ])) # parse rest
+                self.receiveNewMessage(bytes.fromhex(hex_string[payload_end : ])) # parse rest
             else:
                 self.payload_left -= payload_length
                 self.received += message
@@ -194,7 +227,7 @@ class PeerProtocol(Protocol):
     def checkIncomingHandshake(self, payload):
         hex_string = payload.hex()
         payload_len = len(hex_string) # in case we have other things with the handshake
-        print('Checking incoming handshake')
+        # print('Checking incoming handshake')
 
         # Extract a bunch of data from the payload
         pstrlen = int(hex_string[ : 2], 16)
@@ -219,7 +252,7 @@ class PeerProtocol(Protocol):
         payload_len -= 136
 
         if payload_len > 0:
-            self.receive_new_message(bytes.fromhex(hex_string[136:]))
+            self.receiveNewMessage(bytes.fromhex(hex_string[136:]))
 
     def add_peer(self):
         self.factory.peers[self.client_id] = (self.remote_ip, time())
@@ -235,10 +268,10 @@ class PeerProtocol(Protocol):
         if self.state == PeerState.AWAITING_UNCHOKE:
             payload = struct.pack('>iB', *[1, 2])
             self.transport.write(payload)
-            print('Interested')
+            # print('Interested')
 
 class PeerFactory(Factory):
-    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length):
+    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, file_name):
         self.info_hash = hash2ints(info_h)
         self.peer_id = hash2ints(peer_h)
 
@@ -252,14 +285,28 @@ class PeerFactory(Factory):
 
         self._block_length = 2 ** 14
         self._blocks_per_piece = self.piece_length // self._block_length # num blocks per reg piece
+
+        self.file_name = file_name
         
-        if self.last_piece_length < self._block_length:
-            self._blocks_per_last_piece = 1
-        else:
-            self._blocks_per_last_piece = self.last_piece_length // self._block_length # num blocks per last piece
+        if self.last_piece_length < self._block_length: self._blocks_per_last_piece = 1
+        else: self._blocks_per_last_piece = self.last_piece_length // self._block_length # num blocks per last piece
+        
+        self.data = []
+        self.blocks = []
+
+        for i in range(0, self.num_pieces - 1):
+            b = self._blocks_per_piece
+            if self.num_pieces % self._blocks_per_piece > 0: b += 1
+            self.data.append(bitstring.BitArray(b))
+            self.blocks.append([b''] * b)
+        
+        b = self._blocks_per_last_piece
+        if self.num_pieces % self._blocks_per_last_piece > 0: b += 1
+        self.data.append(bitstring.BitArray(b))
+        self.blocks.append([b''] * b)
         
         self.bitfield = bitstring.BitArray(self.num_pieces)
-
+        
         self.numberProtocols = 0
     
     def startFactory(self):
