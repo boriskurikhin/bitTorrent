@@ -116,18 +116,21 @@ class PeerProtocol(Protocol):
         
         piece_index = int(hex_string[10:18], 16)
         byte_offset = int(hex_string[18:18+8], 16)
+
+        if self.factory.bitfield[piece_index] == 1:
+            return
+
         offset_index = byte_offset // self.factory._block_length
 
-        f = open('downloads/' + self.factory.file_name, 'wb')
-        f.seek(piece_index * self.factory.piece_length + byte_offset)
-        f.write(bytes.fromhex(hex_string[18+8:18+8+(length_of_block * 2)]))
-        f.close()
-
+        self.factory.blocks[piece_index][offset_index] = bytes.fromhex(hex_string[18 + 8:])
         self.factory.data[piece_index][offset_index] = 1
+
+        # print(self.factory.data[piece_index], piece_index)
 
         if self.factory.data[piece_index].count(0) == 0:
             self.factory.bitfield[piece_index] = 1
-            # self.writeToFile(piece_index)
+            # print('Index %d is done downloading' % piece_index)
+            self.writeToFile(piece_index)
 
     def writeToFile(self, pieceIndex):
         data = b''.join(self.factory.blocks[pieceIndex])
@@ -141,7 +144,11 @@ class PeerProtocol(Protocol):
         f.write(data)
         f.close()
 
-        print('wrote to file')
+        print('wrote %d/%d to file' % (pieceIndex, self.factory.num_pieces))
+
+        # if pieceIndex == self.factory.num_pieces - 1:
+        #     self.transport.loseConnection()
+
     
     def generateRequest(self):
         if not self.state == PeerState.AWAITING_DATA: 
@@ -169,6 +176,8 @@ class PeerProtocol(Protocol):
         rem = self.factory.last_piece_length % self.factory._blocks_per_last_piece
         if rem > 0 and factory._blocks_per_piece > 1:
             payload = struct.pack('>iBiii', *[13, 6, i, offset, rem])
+        
+        self.generateRequest()
 
     # Parsing a message
     def receiveNewMessage(self, message):
@@ -296,12 +305,12 @@ class PeerFactory(Factory):
 
         for i in range(0, self.num_pieces - 1):
             b = self._blocks_per_piece
-            if self.num_pieces % self._blocks_per_piece > 0: b += 1
+            if self.piece_length % self._blocks_per_piece > 0: b += 1
             self.data.append(bitstring.BitArray(b))
             self.blocks.append([b''] * b)
         
         b = self._blocks_per_last_piece
-        if self.num_pieces % self._blocks_per_last_piece > 0: b += 1
+        if self.piece_length % self._blocks_per_last_piece > 0: b += 1
         self.data.append(bitstring.BitArray(b))
         self.blocks.append([b''] * b)
         
