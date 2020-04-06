@@ -1,4 +1,4 @@
-# bitTorrent
+# bitTorrent v1.1
 
 This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written in Python. I am still working on it.
 
@@ -7,6 +7,8 @@ This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written
 - Supports UDP trackers only (for now)
 - Doesn't support multiple torrents/files
 - Verifies SHA1 hashes to ensure integrity
+##### v1.1
+- Added support for multiple files (but not directories)
 
 ### What is a BitTorrent client?
 
