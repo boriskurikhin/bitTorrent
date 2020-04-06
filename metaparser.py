@@ -64,6 +64,7 @@ class MetaContent:
         self.piece_length = self.decoded['info']['piece length']
         # extract pieces
         self.pieces_hex = self.decoded['info']['pieces'].hex()
+
         #piece hashes will go here
         self.pieces = []
         

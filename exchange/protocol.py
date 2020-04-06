@@ -1,8 +1,10 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
+from tqdm import tqdm
 from time import time
 from enum import Enum
+import hashlib
 import bitstring
 import struct
 import math
@@ -40,7 +42,7 @@ class PeerProtocol(Protocol):
             return
         print('There are %d peers connected' % len(self.factory.peers))
         for peer in self.factory.peers:
-            print('Peer', self.factory.peers[peer])
+            print('Peer', peer)
 
     def connectionMade(self):
         peer = self.transport.getPeer()
@@ -49,9 +51,10 @@ class PeerProtocol(Protocol):
         self.remote_ip = peer.host + ':' + str(peer.port)
 
     def connectionLost(self, reason):
+        # if self.transport.getPeer() in self.factory.peers:
+        #     self.factory.peers.pop(self.transport.getPeer())
         self.factory.numberProtocols -= 1
 
-    # TODO: Handle incoming data from peers
     def dataReceived(self, data):
         if not self.have_handshaked: self.checkIncomingHandshake(data)
         else: self.receiveNewMessage(data)
@@ -121,9 +124,21 @@ class PeerProtocol(Protocol):
             if not self.factory.bitfield[i]:
                 return False
         return True
+
+    # only use if hashes don't match
+    def validate_piece(self, pi):
+        # check if hash matches
+        if not self.__checkHash(pi):
+            # if not, unset all blocks we thought we had right
+            for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + self.factory.blocks_in_whole_piece):
+                self.factory.bitfield[i] = 0
+            return False
+        return True
+
     
     def set_block(self, pi, bi, val):
         self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi] = val
+    
 
     def parse_block(self, hex_string, message_length):
         length_of_block = message_length - 9 # 9 bytes are reserved for response info
@@ -142,37 +157,43 @@ class PeerProtocol(Protocol):
         self.set_block(piece_index, block_index, 1)
 
         if piece_index != self.factory.num_pieces - 1:
-            if self.have_piece(piece_index):
+            if self.have_piece(piece_index) and self.validate_piece(piece_index):
                 self.factory.pieces_need -= 1
-                #print('Got piece %d/%d' % (piece_index, self.factory.num_pieces - 1))
-                #print('%d pieces still need' % (self.factory.pieces_need))
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
         else:
-            if self.have_piece(piece_index):
+            if self.have_piece(piece_index) and self.validate_piece(piece_index):
                 self.factory.pieces_need -= 1
-                #print('Got last piece %d/%d' % (piece_index, self.factory.num_pieces - 1))
-                #print('%d pieces still need' % (self.factory.pieces_need))
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
+
         
+        # Someone wrote the last piece
         if self.factory.pieces_need <= 1:
-            print('Aborting connection')
-            self.transport.abortConnection()
+            print('File download complete...')
+            self.factory.file.close()
+
+    def __checkHash(self, pi):
+        temp = b''
+        for block in self.factory.data[pi]: temp += block
+        piece_hash = hashlib.sha1(temp).hexdigest().upper()
+        expected_hash = self.factory.piece_hashes[pi].upper()
+        return piece_hash == expected_hash
 
     def writePieceToFile(self, pi):
         self.factory.file.seek(pi * self.factory.piece_length)
-        print('Writing %d blocks of piece %d to file...' % (len(self.factory.data[pi]), pi))
+        self.factory.progress.update(1)
+        # print('Download: %d%% complete' %  )
         for bi in range(len(self.factory.data[pi])):
             self.factory.file.write(self.factory.data[pi][bi])
-
     
     def generateRequest(self):
-        if self.factory.pieces_need <= 0:
+        # we don't need anything anymore
+        if self.factory.pieces_need <= 1:
             return
         # go through each piece
         for pi in range(self.factory.num_pieces):
-            if self.have_piece(pi): continue
+            if self.have_piece(pi): continue 
             if pi != self.factory.num_pieces - 1:
                 for bi in range(self.factory.blocks_in_whole_piece):
                     if not self.get_block(pi, bi):
@@ -187,8 +208,7 @@ class PeerProtocol(Protocol):
                         req = struct.pack('>iBiii', *[13, 6, pi, bi * self.factory.BLOCK_LEN, req_size])
                         self.transport.write(req)
                     offset += self.factory.BLOCK_LEN
-        # self.generateRequest()
-
+    
     # Parsing a message
     def receiveNewMessage(self, message):
         if len(message) == 0:
@@ -275,8 +295,9 @@ class PeerProtocol(Protocol):
         
     def add_peer(self):
         self.have_handshaked = True
-        self.factory.peers[self.client_id] = (self.remote_ip, time())
-        self.printPeers()
+        self.factory.peers.append(self.transport.getPeer())
+        # self.factory.peers[self.client_id] = (self.remote_ip, time())
+        # self.printPeers()
 
     # This function is triggered upon a new connection, it sends out a handshake
     def sendHandshake(self):
@@ -290,7 +311,7 @@ class PeerProtocol(Protocol):
         # print('Interested')
 
 class PeerFactory(Factory):
-    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, file_name):
+    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, file_name, piece_hashes):
         self.info_hash = hash2ints(info_h)
         self.peer_id = hash2ints(peer_h)
 
@@ -305,8 +326,11 @@ class PeerFactory(Factory):
         self.BLOCK_LEN = 2 ** 14
         self.file_name = file_name
         self.file = open('downloads/' + self.file_name, 'wb')
+        self.piece_hashes = piece_hashes
         self.pieces_need = self.num_pieces
-        
+
+        self.progress = tqdm(total=self.num_pieces, initial=1)
+
         # TODO: add logic for this
         assert self.piece_length % self.BLOCK_LEN == 0, 'piece len not divisible by block size'
 
@@ -316,8 +340,8 @@ class PeerFactory(Factory):
         # print(self.num_pieces, self.piece_length, self.BLOCK_LEN, self.blocks_in_whole_piece, self.blocks_in_last_piece)
         # raise Exception('Debug')
 
+        # Figure out a better way to store block data maybe?
         self.data = []
-
         for i in range(self.num_pieces - 1):
             blocks = []
             for j in range(self.blocks_in_whole_piece):
@@ -328,14 +352,10 @@ class PeerFactory(Factory):
             blocks.append(b'')
         self.data.append(blocks)
         
-        self.pieces = bitstring.BitArray(self.num_pieces)
+        self.peers = []
         self.bitfield = bitstring.BitArray((self.num_pieces - 1) * self.blocks_in_whole_piece + self.blocks_in_last_piece)
-        # self.requested = bitstring.BitArray(self.num_pieces)
         
         self.numberProtocols = 0
-    
-    def startFactory(self):
-        self.peers = {}
        
     def buildProtocol(self, addr):
         return PeerProtocol(self)
