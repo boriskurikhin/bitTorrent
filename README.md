@@ -2,6 +2,12 @@
 
 This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written in Python. I am still working on it.
 
+### v1.0
+- Single file download through concurrent communication with multiple peers
+- Supports UDP trackers only (for now)
+- Doesn't support multiple torrents/files
+- Verifies SHA1 hashes to ensure integrity
+
 ### What is a BitTorrent client?
 
 A BitTorrent client is a computer program designed for peer-to-peer file sharing using the BitTorrent protocol.
