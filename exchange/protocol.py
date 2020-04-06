@@ -1,6 +1,7 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
 from utilities.h2i import hash2ints
+from hexdump import hexdump
 from tqdm import tqdm
 from time import time
 from enum import Enum
@@ -46,7 +47,7 @@ class PeerProtocol(Protocol):
 
     def connectionMade(self):
         peer = self.transport.getPeer()
-        # print('Peer Connected', peer)
+        print('Peer Connected', peer)
         self.factory.numberProtocols += 1 # increase the number of protocols
         self.remote_ip = peer.host + ':' + str(peer.port)
 
@@ -84,6 +85,9 @@ class PeerProtocol(Protocol):
     # When we know we have the full message, we need to handle it
     def handleFullMessage(self, payload):
         hex_string = payload.hex()
+
+        mlen = struct.unpack('>I')
+        mid = struct.unpack('>', payload)
        
         message_length = int(hex_string[ : 8], 16)
         mid = int(hex_string[8 : 10], 16)
@@ -108,7 +112,7 @@ class PeerProtocol(Protocol):
         elif mid == 6:
             pass
         elif mid == 7:
-            self.parse_block(hex_string, message_length)
+            self.parse_block(hex_string, mlen)
         elif mid == 8:
             pass
         elif mid == 9:
@@ -120,18 +124,28 @@ class PeerProtocol(Protocol):
         return self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi]
 
     def have_piece(self, pi):
-        for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + self.factory.blocks_in_whole_piece):
+        is_last_piece = pi == self.factory.num_pieces - 1
+        incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
+        for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
             if not self.factory.bitfield[i]:
                 return False
         return True
 
+    def set_piece(self, pi, val):
+        is_last_piece = pi == self.factory.num_pieces - 1
+        incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
+        for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
+            self.factory.bitfield.set(val, i)
+
     # only use if hashes don't match
     def validate_piece(self, pi):
         # check if hash matches
+        is_last_piece = pi == self.factory.num_pieces - 1
+        incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
         if not self.__checkHash(pi):
             # if not, unset all blocks we thought we had right
-            for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + self.factory.blocks_in_whole_piece):
-                self.factory.bitfield[i] = 0
+            for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
+                self.factory.bitfield(False, i)
             return False
         return True
 
@@ -176,10 +190,10 @@ class PeerProtocol(Protocol):
             else: self.factory.file.close()
 
     def __checkHash(self, pi):
-        temp = b''
-        for block in self.factory.data[pi]: temp += block
-        piece_hash = hashlib.sha1(temp).hexdigest().upper()
-        expected_hash = self.factory.piece_hashes[pi].upper()
+        piece = b''
+        for block in self.factory.data[pi]: piece += block
+        piece_hash = hashlib.sha1(piece).digest()
+        expected_hash = self.factory.piece_hashes[pi * 20 : pi  * 20 + 20]
         return piece_hash == expected_hash
 
     def writePieceToFile(self, pi):
@@ -209,18 +223,14 @@ class PeerProtocol(Protocol):
                 bytes_written += len_data
             else:
                 bytes_to_end = file_size - bytes_written
-
                 data_to_end = data[ : bytes_to_end] # finish
                 rem_data = data[bytes_to_end: ] # start
-
                 f.write(data_to_end)
                 f.close()
-
+                # Close current file, open a new one, and begin writing to it
                 fi += 1
-
                 f = open(d + self.factory.files_info[fi]['path'], 'wb')
                 file_size = self.factory.files_info[fi]['length']
-
                 f.write(rem_data)
                 bytes_written = len(rem_data)
 
@@ -301,34 +311,30 @@ class PeerProtocol(Protocol):
 
     # Check to see if the incoming handshake is valid
     def checkIncomingHandshake(self, payload):
-        hex_string = payload.hex()
-        payload_len = len(hex_string) # in case we have other things with the handshake
-        # print('Checking incoming handshake')
+#        hexdump(payload)
+        protocol_len = int.from_bytes(struct.unpack('>B', payload[:1]), byteorder='big') # in case there's another protocol
+        protocol, reserved, info_hash, client_id = struct.unpack('>%ds8s20s20s' % protocol_len, payload[1:68])
 
-        # Extract a bunch of data from the payload
-        pstrlen = int(hex_string[ : 2], 16)
-        pstr = bytes.fromhex(hex_string[2 : 2 + 2 * 19]).decode('utf-8') #ends at 40
+        if protocol != b'BitTorrent protocol': 
+            return
 
-        reserved = int(hex_string[40  :40 + 2 * 8])
-        info_hash = hex_string[56 : 56 + 40]
-        self.client_id = hex_string[56 + 40 : 56 + 40 + 40]
+        self.client_id = client_id
 
         # Make sure we don't exchange handshakes with ourselves. 
-        if self.client_id.upper() == self.factory.peer_id_hex.upper():
+        if self.client_id == self.factory.peer_id:
             self.transport.loseConnection()
 
         # The hash requested does not match
-        if info_hash.upper() != self.factory.info_hash_hex.upper():
+        if info_hash != self.factory.info_hash:
             self.transport.loseConnection()
 
         self.add_peer()
         self.sendInterested()
 
         # do we have more data? 
-        payload_len -= 136
+        payload_len = len(payload) - 68
 
-        if payload_len > 0:
-            self.receiveNewMessage(bytes.fromhex(hex_string[136:]))
+        if payload_len > 0: self.receiveNewMessage(payload[68:])
         
     def add_peer(self):
         self.have_handshaked = True
@@ -348,15 +354,11 @@ class PeerProtocol(Protocol):
         # print('Interested')
 
 class PeerFactory(Factory):
-    def __init__(self, peer_h, num_pieces, piece_length, last_piece_length, metadata):
-        print('Hit init!')
-        self.info_hash = hash2ints(metadata.info_hash)
-        self.peer_id = hash2ints(peer_h)
+    def __init__(self, peer_id, piece_length, last_piece_length, metadata):
+        self.info_hash = metadata.info_hash
+        self.peer_id = peer_id
 
-        self.info_hash_hex = metadata.info_hash
-        self.peer_id_hex = peer_h
-
-        self.num_pieces = num_pieces # num total pieces
+        self.num_pieces = metadata.num_pieces # num total pieces
         
         self.piece_length = piece_length # length of one piece in bytes
         self.last_piece_length = last_piece_length # length of last piece in bytes
@@ -365,6 +367,7 @@ class PeerFactory(Factory):
         
         self.multi_file = metadata.multi_file
 
+        # if we're not in multifile mode, we can write to downloads directly
         if not self.multi_file:
             self.file_name = metadata.name
             self.file = open('downloads/' + self.file_name, 'wb')

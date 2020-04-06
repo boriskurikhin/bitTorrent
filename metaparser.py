@@ -18,7 +18,7 @@ class MetaContent:
         print('\nFile Info:\n---------------')
         print('%s:\t\t"%s"' % ('name', self.name))
         print('%s:\t%s\n' % ('created', datetime.utcfromtimestamp(self.creation_date).strftime('%Y-%m-%d %H:%M:%S')))
-        print('%s:\t%s' % ('# pieces', len(self.pieces)))
+        print('%s:\t%s' % ('# pieces', self.num_pieces))
         print('%s:\t%s bytes' % ('piece len', self.piece_length))
         print('%s:\t%s bytes' % ('last piece', self.last_piece_len))
         print('%s:\t\t%s bytes' % ('total', self.length))
@@ -27,7 +27,7 @@ class MetaContent:
             for f in self.files:
                 print('%s:\t(%d bytes)' % (f['path'], f['length']))
             print('------end------')
-        print('%s:\t%s' % ('info-hash', self.info_hash.upper()))
+        print('%s:\t%s' % ('info-hash', self.info_hash.hex()))
     
     def parseFile(self, path_to_file):
         self.path_to_file = path_to_file
@@ -41,6 +41,8 @@ class MetaContent:
         #read torrent file as binary object
         with open(self.path_to_file, 'rb') as meta_file:
             self.decoded = bdecode(meta_file.read())
+
+        print(self.decoded)
 
         #check to see if it's a multi-file torrent
         if 'files' in self.decoded['info']:
@@ -58,24 +60,14 @@ class MetaContent:
         # calculates info hash
         self.info_hash = hashlib.sha1(
             bencode(self.decoded['info'])
-        ).hexdigest()
+        ).digest()
 
          # extract piece length
         self.piece_length = self.decoded['info']['piece length']
-        # extract pieces
-        self.pieces_hex = self.decoded['info']['pieces'].hex()
-
-        #piece hashes will go here
-        self.pieces = []
         
-        # 1 hex - 4 bits
-        # 2 hex - 1 byte
-        # 40 hex = 20 bytes
-
-        # extract all the piece sha-1 hashes (don't know if I need this yet)
-        for i in range(0, len(self.pieces_hex), 40):
-            hex_string = self.pieces_hex[i : i + 40]
-            self.pieces.append(hex_string)
+        # extract pieces (in bytes)
+        self.pieces = self.decoded['info']['pieces']
+        self.num_pieces = len(self.pieces) // 20
         
         # extract name / dictionary as to where to store the files
         self.name = self.decoded['info']['name']
@@ -83,12 +75,12 @@ class MetaContent:
         if not self.multi_file:
             # extract length
             self.length = self.decoded['info']['length']
-            self.last_piece_len = self.length - self.piece_length * (len(self.pieces) - 1)
+            self.last_piece_len = self.length - self.piece_length * (self.num_pieces - 1)
         else:
             self.files = []
             self.length = 0
             for f in self.decoded['info']['files']:
                 self.length += int(f['length'])
                 self.files.append({ 'length': int(f['length']), 'path': f['path'][0] })
-            self.last_piece_len = self.length - self.piece_length * (len(self.pieces) - 1)
+            self.last_piece_len = self.length - self.piece_length * (self.num_pieces - 1)
         self.file_info()

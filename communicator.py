@@ -42,26 +42,14 @@ class Communicator:
         client_version = '0001-' # (4 bytes) TODO: version control?
         rand = ''.join(random.choice(string.ascii_letters) for _ in range(20 - 8))
         
-        raw_id = client_id + client_version + rand
-        self.peer_id = ''
-
-        for i in range(0, 20):
-            self.peer_id += format(ord(raw_id[i]), 'x')
-        
-        assert len(self.peer_id) == 40, 'Something broke while generating peer id'
+        self.peer_id = str(client_id + client_version + rand).encode()
+        assert len(self.peer_id) == 20, 'Something broke while generating peer id'
 
     '''
         If the tracker type is UDP
 
     '''
     def udp_request(self):
-        # When we send params, they must be percent encoded:
-        # https://en.wikipedia.org/wiki/Percent-encoding
-
-        # url encode the hash_info string
-        hash_info_bytes = bytearray.fromhex(self.mf.info_hash)
-        hash_info_enc = urllib.parse.quote(hash_info_bytes)
-
         #https://libtorrent.org/udp_tracker_protocol.html
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -75,7 +63,6 @@ class Communicator:
 
         # Contact every tracker
         for announce in self.trackers:
-            
             # We only care about UDP
             if announce.scheme != 'udp': 
                 continue

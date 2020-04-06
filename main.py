@@ -8,21 +8,22 @@ from twisted.internet.endpoints import connectProtocol
 def gotProtocol(p):
     p.sendHandshake()
 
-def start_server(peers, num_pieces, piece_length, last_piece_length, mp):
-    print(peers)
+def start_server(peers, piece_length, last_piece_length, mp):
+    # print(peers)
     
     server = TCP4ServerEndpoint(reactor, 8000)
-    peerFactory = PeerFactory(com.peer_id, num_pieces, piece_length, last_piece_length, mp)
+    peerFactory = PeerFactory(com.peer_id, piece_length, last_piece_length, mp)
     server.listen(peerFactory)
 
     for peer in peers:
         host, port = peer.split(':')
         # reactor.connectTCP(host, int(port), PeerProtocol(peerFactory) )
         point = TCP4ClientEndpoint(reactor, host, int(port))
-        deferred = connectProtocol(point, PeerProtocol(peerFactory))
-        deferred.addCallback(gotProtocol)
+        try: 
+            deferred = connectProtocol(point, PeerProtocol(peerFactory))
+            deferred.addCallback(gotProtocol)
+        except Exception as e: pass
     
-
 # Main method
 if __name__ == '__main__':
     mp = MetaContent()
@@ -31,6 +32,6 @@ if __name__ == '__main__':
     com = Communicator(mp, False)
     peers = com.get_peers()
 
-    start_server(peers, len(mp.pieces), mp.piece_length, mp.last_piece_len, mp)
+    start_server(peers, mp.piece_length, mp.last_piece_len, mp)
 
     reactor.run()

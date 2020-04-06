@@ -2,6 +2,7 @@ import random
 import struct
 import hashlib
 import ipaddress
+from hexdump import hexdump
 from utilities.h2i import hash2ints
 
 class udpAnnounceHelper:
@@ -24,15 +25,12 @@ class udpAnnounceHelper:
     '''
     def pack_payload(self, params):
         self.transaction_id = random.randint(1, (2 << (31 - 1)) - 1)
-        _info_hash = hash2ints(params['info_hash']) # temporary value to store individual bytes of the hash
-        _peer_id = hash2ints(params['peer_id']) # temporary value to store individual bytes of the peer id
-
         payload = struct.pack('>QII20B20BQQQIIIiH', *[
             params['conn_id'], # Q
             1, # I
             self.transaction_id, #I
-            *_info_hash, #20B
-            *_peer_id, #20B
+            *params['info_hash'], #20B
+            *params['peer_id'], #20B
             0, #Q
             0, #Q
             0, #Q
@@ -42,7 +40,6 @@ class udpAnnounceHelper:
             -1, #i
             8000 #h
         ])
-
         assert(len(payload) == 98), 'Invalid payload length %d' % (len(payload)) 
         return payload
     
@@ -56,24 +53,18 @@ class udpAnnounceHelper:
         and then a list of peers 6 bytes per peer
     '''
     def unpack_payload(self, payload):
-        hex_string = payload.hex()
-
-        # extract stuff from the the payload
-        action = int(hex_string[ : 8], 16)
-        trans_id = int(hex_string[8 : 16], 16)
-        interval = int(hex_string[16 : 24], 16)
-        leechers = int(hex_string[24: 32], 16)
-        seeders = int(hex_string[32:40], 16)
+        action, trans_id, interval, leechers, seeders = struct.unpack('>IIIII', payload[:20])
 
         assert action == 1, 'Action response did not match 1'
         assert trans_id == self.transaction_id, 'Transaction id didn\'t match'
+        print('%d seeders, %d leechers' % (seeders, leechers))
 
         peers = []
 
         # Extract a list of peers
-        for i in range(40, len(hex_string), 12):
-            ip_add = str(ipaddress.IPv4Address(int(hex_string[i : i + 8], 16)))
-            port = str(int(hex_string[i + 8 : i + 8 + 4], 16))
+        for i in range(20, len(payload), 6):
+            ip_add = str(ipaddress.IPv4Address(int.from_bytes(payload[i : i + 4], byteorder='big')))
+            port = str(int.from_bytes(payload[i + 4 : i + 6], byteorder='big'))
             peers.append(':'.join([ip_add, port]))
 
         return {
