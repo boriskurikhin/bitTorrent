@@ -171,7 +171,9 @@ class PeerProtocol(Protocol):
         # Someone wrote the last piece
         if self.factory.pieces_need <= 1:
             print('File download complete...')
-            self.factory.file.close()
+            if self.factory.multi_file:
+                self.writeToFiles()
+            else: self.factory.file.close()
 
     def __checkHash(self, pi):
         temp = b''
@@ -181,12 +183,47 @@ class PeerProtocol(Protocol):
         return piece_hash == expected_hash
 
     def writePieceToFile(self, pi):
-        self.factory.file.seek(pi * self.factory.piece_length)
         self.factory.progress.update(1)
-        # print('Download: %d%% complete' %  )
-        for bi in range(len(self.factory.data[pi])):
-            self.factory.file.write(self.factory.data[pi][bi])
-    
+        if not self.factory.multi_file:
+            self.factory.file.seek(pi * self.factory.piece_length)
+            # print('Download: %d%% complete' %  )
+            for bi in range(len(self.factory.data[pi])):
+                self.factory.file.write(self.factory.data[pi][bi])
+            self.factory.data[pi] = None #frees up memory??
+        else: pass # TODO: figure out how to write files on the fly..(we're gonna have to pre-calculate that)
+
+    def writeToFiles(self):
+        bytes_written = 0 
+        d = 'downloads/'
+        fi = 0
+        file_size = self.factory.files_info[fi]['length']
+        f = open(d + self.factory.files_info[fi]['path'], 'wb')
+
+        for pi in range(self.factory.num_pieces):
+            data = b''
+            for bi in range(len(self.factory.data[pi])):
+                data += self.factory.data[pi][bi]
+            len_data = len(data)
+            if bytes_written + len_data <= file_size:
+                f.write(data)
+                bytes_written += len_data
+            else:
+                bytes_to_end = file_size - bytes_written
+
+                data_to_end = data[ : bytes_to_end] # finish
+                rem_data = data[bytes_to_end: ] # start
+
+                f.write(data_to_end)
+                f.close()
+
+                fi += 1
+
+                f = open(d + self.factory.files_info[fi]['path'], 'wb')
+                file_size = self.factory.files_info[fi]['length']
+
+                f.write(rem_data)
+                bytes_written = len(rem_data)
+
     def generateRequest(self):
         # we don't need anything anymore
         if self.factory.pieces_need <= 1:
@@ -311,11 +348,12 @@ class PeerProtocol(Protocol):
         # print('Interested')
 
 class PeerFactory(Factory):
-    def __init__(self, info_h, peer_h, num_pieces, piece_length, last_piece_length, file_name, piece_hashes):
-        self.info_hash = hash2ints(info_h)
+    def __init__(self, peer_h, num_pieces, piece_length, last_piece_length, metadata):
+        print('Hit init!')
+        self.info_hash = hash2ints(metadata.info_hash)
         self.peer_id = hash2ints(peer_h)
 
-        self.info_hash_hex = info_h
+        self.info_hash_hex = metadata.info_hash
         self.peer_id_hex = peer_h
 
         self.num_pieces = num_pieces # num total pieces
@@ -324,9 +362,16 @@ class PeerFactory(Factory):
         self.last_piece_length = last_piece_length # length of last piece in bytes
 
         self.BLOCK_LEN = 2 ** 14
-        self.file_name = file_name
-        self.file = open('downloads/' + self.file_name, 'wb')
-        self.piece_hashes = piece_hashes
+        
+        self.multi_file = metadata.multi_file
+
+        if not self.multi_file:
+            self.file_name = metadata.name
+            self.file = open('downloads/' + self.file_name, 'wb')
+        else:
+            self.files_info = metadata.files
+        
+        self.piece_hashes = metadata.pieces
         self.pieces_need = self.num_pieces
 
         self.progress = tqdm(total=self.num_pieces, initial=1)
