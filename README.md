@@ -13,4 +13,10 @@ However, this could not be possible without:
 - [Twisted](https://twistedmatrix.com/trac/)
 - [bCoding](https://pypi.org/project/bcoding/1.4/)
 
+### User Iterface (v1.0)
+
+This is what the UI looks like right now *(no music was illegally distributed in the making this screenshot)*:
+
+![User Interface](docs/UI.jpg)
+
 
