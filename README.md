@@ -2,7 +2,7 @@
 
 This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written in Python. I am still working on it.
 
-* TODO: A major re-write where I move away from using hex strings everywhere *
+*TODO: A major re-write where I move away from using hex strings everywhere*
 
 ### v1.0
 - Single file download through concurrent communication with multiple peers
