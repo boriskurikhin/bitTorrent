@@ -12,7 +12,7 @@ def start_server(peers, piece_length, last_piece_length, mp):
     # print(peers)
     
     server = TCP4ServerEndpoint(reactor, 8000)
-    peerFactory = PeerFactory(com.peer_id, piece_length, last_piece_length, mp)
+    peerFactory = PeerFactory(com.peer_id, piece_length, last_piece_length, mp, peers)
     server.listen(peerFactory)
 
     for peer in peers:

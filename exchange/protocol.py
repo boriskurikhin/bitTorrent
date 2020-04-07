@@ -25,7 +25,6 @@ class PeerProtocol(Protocol):
         self.has_handshaked = False # important for new connections
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
         self.have_handshaked = False
-        self.handshakeSent = False
         # 4 States that we maintain with each peer
         # self.is_choking = True
         # self.is_interested = False
@@ -124,15 +123,19 @@ class PeerProtocol(Protocol):
                 return False
         return True
 
-    # only use if hashes don't match
-    def validatePiece(self, pi):
-        # check if hash matches
+    # sets the entire piece bit range to value
+    def __setPiece(self, pi, value):
         is_last_piece = pi == self.factory.num_pieces - 1
         incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
+        for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
+            self.factory.bitfield(value, i)
+
+    # when we get a piece, we need to make sure it's legit
+    def validatePiece(self, pi):
+        # check if hash matches
         if not self.__checkHash(pi):
             # if not, unset all blocks we thought we had right
-            for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
-                self.factory.bitfield(False, i)
+            self.__setPiece(pi, False)
             return False
         return True
     
@@ -230,6 +233,7 @@ class PeerProtocol(Protocol):
         payload = struct.pack('>IB%ds', *[payload_len, 5, *bitfield.bytes])
         # TODO: all the ones we didn't send, we need to send as HAVE messages
         self.transport.write(payload)
+        print('Sent bitfield')
 
 
     def generateRequest(self):
@@ -325,14 +329,12 @@ class PeerProtocol(Protocol):
             self.transport.loseConnection()
 
         # If we receiving back a handshake, and we still need stuff - we're interested
-        if self.handshakeSent:
+        if self.remote_ip in self.factory.originalPeers:
             self.addPeer()
             if self.factory.pieces_need > 0:
                 self.sendInterested()
         else:
-            self.handshakeSent = True
             self.sendHandshake()
-            # TODO: send the bitfield of what we have
             self.sendBitfield()
             return # They're not supposed to send anything else until we returned the handshake
 
@@ -349,7 +351,6 @@ class PeerProtocol(Protocol):
 
     # This function is triggered upon a new connection, it sends out a handshake
     def sendHandshake(self, originalPeer=False):
-        if originalPeer: self.handshakeSent = True
         payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 0 , *self.factory.info_hash, *self.factory.peer_id])
         self.transport.write(payload)
     
@@ -360,9 +361,12 @@ class PeerProtocol(Protocol):
         # print('Interested')
 
 class PeerFactory(Factory):
-    def __init__(self, peer_id, piece_length, last_piece_length, metadata):
+    def __init__(self, my_peer_id, piece_length, last_piece_length, metadata, peers):
         self.info_hash = metadata.info_hash
-        self.peer_id = peer_id
+        self.peer_id = my_peer_id
+        
+        # ips that the tracker gave us
+        self.originalPeers = peers
 
         self.num_pieces = metadata.num_pieces # num total pieces
         
