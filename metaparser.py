@@ -42,8 +42,6 @@ class MetaContent:
         with open(self.path_to_file, 'rb') as meta_file:
             self.decoded = bdecode(meta_file.read())
 
-        print(self.decoded)
-
         #check to see if it's a multi-file torrent
         if 'files' in self.decoded['info']:
             self.multi_file = True

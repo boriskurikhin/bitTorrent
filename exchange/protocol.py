@@ -61,9 +61,9 @@ class PeerProtocol(Protocol):
         else: self.receiveNewMessage(data)
 
     # Message ID: 5
-    def parseBitfield(self, hex_str):
+    def parseBitfield(self, payload):
         # set this peer's (could be partial) bitfield value
-        update_bitfield = bitstring.BitArray('0x' + hex_str[10 : ])
+        update_bitfield = bitstring.BitArray('0x' + payload.hex())
 
         # They don't have any pieces
         if 1 not in update_bitfield:
@@ -76,8 +76,8 @@ class PeerProtocol(Protocol):
         self.sendInterested()
     
     # Message ID: 4
-    def parseHave(self, hex_str):
-        piece_index = int(hex_str[10:10+8], 16)
+    def parseHave(self, payload):
+        piece_index, = struct.unpack('>I', payload[:4])
         self.bitfield[piece_index] = 1
         # if we don't have this piece, and we haven't asked anyone
         self.sendInterested()
@@ -86,36 +86,28 @@ class PeerProtocol(Protocol):
     def handleFullMessage(self, payload):
         hex_string = payload.hex()
 
-        mlen = struct.unpack('>I')
-        mid = struct.unpack('>', payload)
-       
-        message_length = int(hex_string[ : 8], 16)
-        mid = int(hex_string[8 : 10], 16)
-
-        # print('Handling id:', mid, '(' + self.remote_ip + ')')
+        message_length, message_id = struct.unpack('>IB', payload[:5])
 
         # The only one we got back so far
-        if mid == 0:
-            # print('Received choke (' + self.remote_ip + ')')
+        if message_id == 0:
             self.sendInterested() # If we're getting choked, try to get unchoked
             self.am_choking = True
-        elif mid == 1: 
-            # print('Received unchoke (' + self.remote_ip + ')')
+        elif message_id == 1: 
             self.am_choking = False
             self.generateRequest()
-        elif mid == 3: 
+        elif message_id == 3: 
             pass
-        elif mid == 4:
-            self.parseHave(hex_string)
-        elif mid == 5:
-            self.parseBitfield(hex_string)
-        elif mid == 6:
+        elif message_id == 4:
+            self.parseHave(payload[5:])
+        elif message_id == 5:
+            self.parseBitfield(payload[5:])
+        elif message_id == 6:
             pass
-        elif mid == 7:
-            self.parse_block(hex_string, mlen)
-        elif mid == 8:
+        elif message_id == 7:
+            self.parse_block(payload[5:], message_length)
+        elif message_id == 8:
             pass
-        elif mid == 9:
+        elif message_id == 9:
             pass
         else:
             self.checkIncomingHandshake(payload)
@@ -154,20 +146,19 @@ class PeerProtocol(Protocol):
         self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi] = val
     
 
-    def parse_block(self, hex_string, message_length):
+    def parse_block(self, payload, message_length):
         length_of_block = message_length - 9 # 9 bytes are reserved for response info
 
         if length_of_block % self.factory.BLOCK_LEN != 0:
             return
         
-        piece_index = int(hex_string[10:18], 16)
-        byte_offset = int(hex_string[18:18+8], 16)
+        piece_index, byte_offset = struct.unpack('>II', payload[:8])
         block_index = byte_offset // self.factory.BLOCK_LEN
 
         if self.get_block(piece_index, block_index) or self.have_piece(piece_index):
             return
 
-        self.factory.data[piece_index][block_index] = bytes.fromhex(hex_string[18 + 8:])
+        self.factory.data[piece_index][block_index] = payload[8:]
         self.set_block(piece_index, block_index, 1)
 
         if piece_index != self.factory.num_pieces - 1:
@@ -181,7 +172,6 @@ class PeerProtocol(Protocol):
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
 
-        
         # Someone wrote the last piece
         if self.factory.pieces_need <= 1:
             print('File download complete...')
@@ -257,68 +247,62 @@ class PeerProtocol(Protocol):
                     offset += self.factory.BLOCK_LEN
     
     # Parsing a message
-    def receiveNewMessage(self, message):
-        if len(message) == 0:
-            return
-        
-        hex_string = message.hex() # entire message in hex
-
-        # print('From (' + self.remote_ip + ')')
-        # print('Payload left', self.payload_left )
-        # print('Message', message)
-
+    def receiveNewMessage(self, payload):
+        if len(payload) == 0: return
+    
         # if we aren't currently waiting on continuation of previous message
-        if self.payload_left == 0:           
-            payload_size = int(hex_string[ : 8], 16) # (message type + payload) in bytes
+        if self.payload_left == 0:
+            try: payload_size, = struct.unpack('>I', payload[:4])
+            except Exception as e: 
+                hexdump(payload)
+                return # faulty payload
 
             # fixed size message, no payload
             if payload_size == 1:
-                self.handleFullMessage(bytes.fromhex(hex_string[ : 10]))
-                self.receiveNewMessage(bytes.fromhex(hex_string[10 : ]))
+                self.handleFullMessage(payload[:5])
+                self.receiveNewMessage(payload[5:])
             elif payload_size == 0:
                 # It's a keep alive
                 # TODO: do something with this
                 self.keep_alive = True
             else:
                 # did we receive a full message, or more perhaps?
-                payload_length = len(hex_string[8:]) # counts hex chars (message type + payload)
-                no_overflow = (payload_length >= (payload_size * 2))
+                payload_length = len(payload[4:]) # counts hex chars (message type + payload)
+                no_overflow = payload_length >= payload_size
 
                 if no_overflow:
-                    self.handleFullMessage(bytes.fromhex(hex_string[ : (payload_size * 2) + 8])) # send full message to responding
-                    self.receiveNewMessage(bytes.fromhex(hex_string[(payload_size * 2) + 8 : ])) # send the rest for a re-parse
+                    self.handleFullMessage(payload[:payload_size + 4]) # send full message to responding
+                    self.receiveNewMessage(payload[payload_size + 4:]) # send the rest for a re-parse
                 else:
                     # The beginning chunk of a message
-                    self.payload_left = (payload_size * 2) - payload_length
-                    self.received += message
+                    self.payload_left = payload_size - payload_length
+                    self.received += payload
         else:
             # received new chunk continuing the previous message
-            payload_length = len(hex_string)
+            payload_length = len(payload)
             no_overflow = (payload_length >= self.payload_left)
 
             if no_overflow:
-                self.received += bytes.fromhex(hex_string[ : self.payload_left])         
+                self.received += payload[:self.payload_left]
                 self.handleFullMessage(self.received) # parse current
                 
                 payload_end = self.payload_left
                 self.payload_left = 0
                 self.received = b''
                 
-                self.receiveNewMessage(bytes.fromhex(hex_string[payload_end : ])) # parse rest
+                self.receiveNewMessage(payload[payload_end:]) # parse rest
             else:
                 self.payload_left -= payload_length
-                self.received += message
+                self.received += payload
 
     # Check to see if the incoming handshake is valid
     def checkIncomingHandshake(self, payload):
 #        hexdump(payload)
-        protocol_len = int.from_bytes(struct.unpack('>B', payload[:1]), byteorder='big') # in case there's another protocol
-        protocol, reserved, info_hash, client_id = struct.unpack('>%ds8s20s20s' % protocol_len, payload[1:68])
+        protocol_len, = struct.unpack('>B', payload[:1])
+        protocol, reserved, info_hash, self.client_id = struct.unpack('>%ds8s20s20s' % protocol_len, payload[1:68])
 
         if protocol != b'BitTorrent protocol': 
             return
-
-        self.client_id = client_id
 
         # Make sure we don't exchange handshakes with ourselves. 
         if self.client_id == self.factory.peer_id:
