@@ -250,7 +250,7 @@ class PeerProtocol(Protocol):
         if self.factory.pieces_need <= 0:
             return
         
-        # get an array of pieces that we don't have, and shuffle them in a random order
+        # get an array of pieces that we don't have, that the peer has, and shuffle them in a random order
         pieces_list = list(filter(lambda x: not self.havePiece(x) and self.bitfield[x], [*range(self.factory.num_pieces)]))
         random.shuffle(pieces_list)
 

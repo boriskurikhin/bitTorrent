@@ -8,6 +8,9 @@ from twisted.internet.endpoints import connectProtocol
 def gotProtocol(p):
     p.sendHandshake(True)
 
+def handleError(e):
+    pass
+
 def start_server(peers, piece_length, last_piece_length, mp):
     server = TCP4ServerEndpoint(reactor, 8000)
     peerFactory = PeerFactory(com.peer_id, piece_length, last_piece_length, mp, peers)
@@ -17,10 +20,9 @@ def start_server(peers, piece_length, last_piece_length, mp):
         host, port = peer.split(':')
         # reactor.connectTCP(host, int(port), PeerProtocol(peerFactory) )
         point = TCP4ClientEndpoint(reactor, host, int(port))
-        try: 
-            deferred = connectProtocol(point, PeerProtocol(peerFactory))
-            deferred.addCallback(gotProtocol)
-        except Exception as e: pass
+        deferred = connectProtocol(point, PeerProtocol(peerFactory))
+        deferred.addCallback(gotProtocol)
+        deferred.addErrback(handleError)
     
 # Main method
 if __name__ == '__main__':
