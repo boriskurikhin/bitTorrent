@@ -49,8 +49,6 @@ class PeerProtocol(Protocol):
 
     def connectionMade(self):
         peer = self.transport.getPeer()
-        print('Sent handshake', self.handshakeSent)
-        print('Peer Connected', peer)
         self.factory.numberProtocols += 1 # increase the number of protocols
         self.remote_ip = peer.host + ':' + str(peer.port)
 
@@ -246,8 +244,12 @@ class PeerProtocol(Protocol):
         # we don't need anything anymore
         if self.factory.pieces_need <= 0:
             return
-        # go through each piece
-        for pi in range(self.factory.num_pieces):
+        
+        # random piece sampling instead of sequential
+        pieces_list = [*range(self.factory.num_pieces)]
+        random.shuffle(pieces_list)
+
+        for pi in pieces_list:
             if self.have_piece(pi): continue 
             if pi != self.factory.num_pieces - 1:
                 for bi in range(self.factory.blocks_in_whole_piece):
