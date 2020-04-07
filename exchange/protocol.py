@@ -105,7 +105,7 @@ class PeerProtocol(Protocol):
         elif message_id == 6:
             pass
         elif message_id == 7:
-            self.parse_block(payload[5:], message_length)
+            self.parseBlock(payload[5:], message_length)
         elif message_id == 8:
             pass
         elif message_id == 9:
@@ -113,10 +113,10 @@ class PeerProtocol(Protocol):
         else:
             self.checkIncomingHandshake(payload)
 
-    def get_block(self, pi, bi):
+    def getBlock(self, pi, bi):
         return self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi]
 
-    def have_piece(self, pi):
+    def havePiece(self, pi):
         is_last_piece = pi == self.factory.num_pieces - 1
         incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
         for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
@@ -124,14 +124,8 @@ class PeerProtocol(Protocol):
                 return False
         return True
 
-    def set_piece(self, pi, val):
-        is_last_piece = pi == self.factory.num_pieces - 1
-        incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
-        for i in range(pi * self.factory.blocks_in_whole_piece, pi * self.factory.blocks_in_whole_piece + incr):
-            self.factory.bitfield.set(val, i)
-
     # only use if hashes don't match
-    def validate_piece(self, pi):
+    def validatePiece(self, pi):
         # check if hash matches
         is_last_piece = pi == self.factory.num_pieces - 1
         incr = self.factory.blocks_in_last_piece if is_last_piece else self.factory.blocks_in_whole_piece
@@ -141,13 +135,11 @@ class PeerProtocol(Protocol):
                 self.factory.bitfield(False, i)
             return False
         return True
-
     
-    def set_block(self, pi, bi, val):
+    def setBlock(self, pi, bi, val):
         self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi] = val
-    
 
-    def parse_block(self, payload, message_length):
+    def parseBlock(self, payload, message_length):
         length_of_block = message_length - 9 # 9 bytes are reserved for response info
 
         if length_of_block % self.factory.BLOCK_LEN != 0:
@@ -156,19 +148,19 @@ class PeerProtocol(Protocol):
         piece_index, byte_offset = struct.unpack('>II', payload[:8])
         block_index = byte_offset // self.factory.BLOCK_LEN
 
-        if self.get_block(piece_index, block_index) or self.have_piece(piece_index):
+        if self.getBlock(piece_index, block_index) or self.havePiece(piece_index):
             return
 
         self.factory.data[piece_index][block_index] = payload[8:]
-        self.set_block(piece_index, block_index, 1)
+        self.setBlock(piece_index, block_index, 1)
 
         if piece_index != self.factory.num_pieces - 1:
-            if self.have_piece(piece_index) and self.validate_piece(piece_index):
+            if self.havePiece(piece_index) and self.validatePiece(piece_index):
                 self.factory.pieces_need -= 1
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
         else:
-            if self.have_piece(piece_index) and self.validate_piece(piece_index):
+            if self.havePiece(piece_index) and self.validatePiece(piece_index):
                 self.factory.pieces_need -= 1
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
@@ -229,7 +221,7 @@ class PeerProtocol(Protocol):
     def sendBitfield(self):
         we_have = []
         for i in range(self.factory.num_pieces):
-            if self.have_piece(i): we_have.append(i)
+            if self.havePiece(i): we_have.append(i)
         sample = random.sample(we_have, k = random.randint(1, len(we_have)))
         bitfield = bitstring.BitArray(self.factory.num_pieces)
         for idx in sample: 
@@ -250,16 +242,16 @@ class PeerProtocol(Protocol):
         random.shuffle(pieces_list)
 
         for pi in pieces_list:
-            if self.have_piece(pi): continue 
+            if self.havePiece(pi): continue 
             if pi != self.factory.num_pieces - 1:
                 for bi in range(self.factory.blocks_in_whole_piece):
-                    if not self.get_block(pi, bi):
+                    if not self.getBlock(pi, bi):
                         req = struct.pack('>iBiii', *[13, 6, pi, bi * self.factory.BLOCK_LEN, self.factory.BLOCK_LEN])
                         self.transport.write(req)
             else:
                 offset = 0
                 for bi in range(self.factory.blocks_in_last_piece):
-                    if not self.get_block(pi, bi):
+                    if not self.getBlock(pi, bi):
                         if self.factory.last_piece_length - offset <= self.factory.BLOCK_LEN: req_size = self.factory.last_piece_length - offset
                         else: req_size = self.factory.BLOCK_LEN
                         req = struct.pack('>iBiii', *[13, 6, pi, bi * self.factory.BLOCK_LEN, req_size])
@@ -274,7 +266,7 @@ class PeerProtocol(Protocol):
         if self.payload_left == 0:
             try: payload_size, = struct.unpack('>I', payload[:4])
             except Exception as e: 
-                hexdump(payload)
+                # hexdump(payload)
                 return # faulty payload
 
             # fixed size message, no payload
@@ -334,7 +326,7 @@ class PeerProtocol(Protocol):
 
         # If we receiving back a handshake, and we still need stuff - we're interested
         if self.handshakeSent:
-            self.add_peer()
+            self.addPeer()
             if self.factory.pieces_need > 0:
                 self.sendInterested()
         else:
@@ -349,7 +341,7 @@ class PeerProtocol(Protocol):
 
         if payload_len > 0: self.receiveNewMessage(payload[68:])
         
-    def add_peer(self):
+    def addPeer(self):
         self.have_handshaked = True
         self.factory.peers.append(self.transport.getPeer())
         # self.factory.peers[self.client_id] = (self.remote_ip, time())
