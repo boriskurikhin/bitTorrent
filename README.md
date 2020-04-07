@@ -1,8 +1,6 @@
-# bitTorrent v1.1
+# bitTorrent v1.2
 
 This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written in Python. I am still working on it.
-
-*TODO: A major re-write where I move away from using hex strings everywhere*
 
 ### v1.0
 - Single file download through concurrent communication with multiple peers
@@ -11,6 +9,10 @@ This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written
 - Verifies SHA1 hashes to ensure integrity
 ##### &nbsp;&nbsp;&nbsp;&nbsp;v1.1
 - Added support for multiple files (but not directories)
+##### &nbsp;&nbsp;&nbsp;&nbsp;v1.2
+- Overall download speed increase 
+- Pieces requested in random order
+- Functions operate on bytes instead of hex strings
 
 ### What is a BitTorrent client?
 
