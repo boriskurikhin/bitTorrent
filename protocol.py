@@ -1,6 +1,5 @@
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.protocol import Protocol, Factory
-from utilities.h2i import hash2ints
 from hexdump import hexdump
 from tqdm import tqdm
 from time import time
@@ -30,7 +29,6 @@ class PeerProtocol(Protocol):
         # self.is_interested = False
         self.am_choking = True
         self.am_interested = False
-        self.waiting_from_me = bitstring.BitArray(self.factory.num_pieces)
 
         self.keep_alive = True
 
@@ -95,6 +93,9 @@ class PeerProtocol(Protocol):
         elif message_id == 1: 
             self.am_choking = False
             self.generateRequest()
+        elif message_id == 2:
+            print(self.remote_ip, 'is interested')
+            pass
         elif message_id == 3:
             pass
         elif message_id == 4:

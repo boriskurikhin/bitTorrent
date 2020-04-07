@@ -1,6 +1,6 @@
 from metaparser import MetaContent
 from communicator import Communicator
-from exchange.protocol import PeerProtocol, PeerFactory
+from protocol import PeerProtocol, PeerFactory
 from twisted.internet.endpoints import TCP4ClientEndpoint, TCP4ServerEndpoint
 from twisted.internet import reactor
 from twisted.internet.endpoints import connectProtocol
@@ -9,8 +9,6 @@ def gotProtocol(p):
     p.sendHandshake(True)
 
 def start_server(peers, piece_length, last_piece_length, mp):
-    # print(peers)
-    
     server = TCP4ServerEndpoint(reactor, 8000)
     peerFactory = PeerFactory(com.peer_id, piece_length, last_piece_length, mp, peers)
     server.listen(peerFactory)

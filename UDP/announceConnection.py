@@ -3,7 +3,6 @@ import struct
 import hashlib
 import ipaddress
 from hexdump import hexdump
-from utilities.h2i import hash2ints
 
 class udpAnnounceHelper:
     '''
