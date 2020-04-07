@@ -8,6 +8,7 @@ from enum import Enum
 import hashlib
 import bitstring
 import struct
+import random
 import math
 
 '''
@@ -24,6 +25,7 @@ class PeerProtocol(Protocol):
         self.has_handshaked = False # important for new connections
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
         self.have_handshaked = False
+        self.handshakeSent = False
         # 4 States that we maintain with each peer
         # self.is_choking = True
         # self.is_interested = False
@@ -47,6 +49,7 @@ class PeerProtocol(Protocol):
 
     def connectionMade(self):
         peer = self.transport.getPeer()
+        print('Sent handshake', self.handshakeSent)
         print('Peer Connected', peer)
         self.factory.numberProtocols += 1 # increase the number of protocols
         self.remote_ip = peer.host + ':' + str(peer.port)
@@ -95,7 +98,7 @@ class PeerProtocol(Protocol):
         elif message_id == 1: 
             self.am_choking = False
             self.generateRequest()
-        elif message_id == 3: 
+        elif message_id == 3:
             pass
         elif message_id == 4:
             self.parseHave(payload[5:])
@@ -173,7 +176,7 @@ class PeerProtocol(Protocol):
                 self.generateRequest()
 
         # Someone wrote the last piece
-        if self.factory.pieces_need <= 1:
+        if self.factory.pieces_need <= 0:
             print('File download complete...')
             if self.factory.multi_file:
                 self.writeToFiles()
@@ -223,10 +226,25 @@ class PeerProtocol(Protocol):
                 file_size = self.factory.files_info[fi]['length']
                 f.write(rem_data)
                 bytes_written = len(rem_data)
+    
+    # lazy bitfield to prevent from ISP filtering
+    def sendBitfield(self):
+        we_have = []
+        for i in range(self.factory.num_pieces):
+            if self.have_piece(i): we_have.append(i)
+        sample = random.sample(we_have, k = random.randint(1, len(we_have)))
+        bitfield = bitstring.BitArray(self.factory.num_pieces)
+        for idx in sample: 
+            bitfield.set(True, idx)
+        payload_len = 1 + self.factory.num_pieces
+        payload = struct.pack('>IB%ds', *[payload_len, 5, *bitfield.bytes])
+        # TODO: all the ones we didn't send, we need to send as HAVE messages
+        self.transport.write(payload)
+
 
     def generateRequest(self):
         # we don't need anything anymore
-        if self.factory.pieces_need <= 1:
+        if self.factory.pieces_need <= 0:
             return
         # go through each piece
         for pi in range(self.factory.num_pieces):
@@ -312,8 +330,17 @@ class PeerProtocol(Protocol):
         if info_hash != self.factory.info_hash:
             self.transport.loseConnection()
 
-        self.add_peer()
-        self.sendInterested()
+        # If we receiving back a handshake, and we still need stuff - we're interested
+        if self.handshakeSent:
+            self.add_peer()
+            if self.factory.pieces_need > 0:
+                self.sendInterested()
+        else:
+            self.handshakeSent = True
+            self.sendHandshake()
+            # TODO: send the bitfield of what we have
+            self.sendBitfield()
+            return # They're not supposed to send anything else until we returned the handshake
 
         # do we have more data? 
         payload_len = len(payload) - 68
@@ -327,7 +354,8 @@ class PeerProtocol(Protocol):
         # self.printPeers()
 
     # This function is triggered upon a new connection, it sends out a handshake
-    def sendHandshake(self):
+    def sendHandshake(self, originalPeer=False):
+        if originalPeer: self.handshakeSent = True
         payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 0 , *self.factory.info_hash, *self.factory.peer_id])
         self.transport.write(payload)
     
@@ -359,7 +387,7 @@ class PeerFactory(Factory):
             self.files_info = metadata.files
         
         self.piece_hashes = metadata.pieces
-        self.pieces_need = self.num_pieces
+        self.pieces_need = self.num_pieces - 1
 
         self.progress = tqdm(total=self.num_pieces, initial=1)
 

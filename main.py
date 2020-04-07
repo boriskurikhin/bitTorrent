@@ -6,7 +6,7 @@ from twisted.internet import reactor
 from twisted.internet.endpoints import connectProtocol
 
 def gotProtocol(p):
-    p.sendHandshake()
+    p.sendHandshake(True)
 
 def start_server(peers, piece_length, last_piece_length, mp):
     # print(peers)
