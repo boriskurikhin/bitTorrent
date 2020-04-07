@@ -1,8 +1,10 @@
 from UDP.initialConnection import udpConnectionHelper
+from HTTP.announceConnection import httpAnnounceHelper
 from UDP.announceConnection import udpAnnounceHelper
-from UDP.sender import Sender
 from twisted.internet import reactor, protocol
+from bcoding import bencode, bdecode
 from metaparser import MetaContent
+from UDP.sender import Sender
 import urllib.parse
 import requests
 import socket
@@ -109,6 +111,21 @@ class Communicator:
         If the tracker type is HTTP
     '''
     def http_request(self):
+        
+        conn_helper = httpAnnounceHelper()
+
+        params = {
+            'info_hash': self.mf.info_hash,
+            'peer_id': self.peer_id,
+            'left': self.mf.length,
+            'announce': self.mf.announce
+        }
+
+        raw_resp = conn_helper.pack_request(params)
+        resp = conn_helper.unpack_request(raw_resp)
+    
+        exit(0)
+
         return None
     '''
         This function is responsible for 

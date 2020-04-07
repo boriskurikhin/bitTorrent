@@ -174,7 +174,10 @@ class PeerProtocol(Protocol):
             print('File download complete...')
             if self.factory.multi_file:
                 self.writeToFiles()
-            else: self.factory.file.close()
+            else: 
+                self.factory.file.close()
+                from twisted.internet import reactor
+                reactor.stop()
 
     def __checkHash(self, pi):
         piece = b''
@@ -194,6 +197,11 @@ class PeerProtocol(Protocol):
         else: pass # TODO: figure out how to write files on the fly..(we're gonna have to pre-calculate that)
 
     def writeToFiles(self):
+        
+        # stop receiving messages
+        from twisted.internet import reactor
+        reactor.stop()
+
         bytes_written = 0 
         d = 'downloads/'
         fi = 0
@@ -242,12 +250,11 @@ class PeerProtocol(Protocol):
         if self.factory.pieces_need <= 0:
             return
         
-        # random piece sampling instead of sequential
-        pieces_list = [*range(self.factory.num_pieces)]
+        # get an array of pieces that we don't have, and shuffle them in a random order
+        pieces_list = list(filter(lambda x: not self.havePiece(x) and self.bitfield[x], [*range(self.factory.num_pieces)]))
         random.shuffle(pieces_list)
 
         for pi in pieces_list:
-            if self.havePiece(pi): continue 
             if pi != self.factory.num_pieces - 1:
                 for bi in range(self.factory.blocks_in_whole_piece):
                     if not self.getBlock(pi, bi):
