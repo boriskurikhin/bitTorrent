@@ -9,6 +9,7 @@ import bitstring
 import struct
 import random
 import math
+import os
 
 '''
     This is how we will communicate with peers
@@ -48,6 +49,7 @@ class PeerProtocol(Protocol):
         peer = self.transport.getPeer()
         self.factory.numberProtocols += 1 # increase the number of protocols
         self.remote_ip = peer.host + ':' + str(peer.port)
+        self.factory.participation[self.remote_ip] = 0
 
     def connectionLost(self, reason):
         # if self.transport.getPeer() in self.factory.peers:
@@ -160,11 +162,13 @@ class PeerProtocol(Protocol):
 
         if piece_index != self.factory.num_pieces - 1:
             if self.havePiece(piece_index) and self.validatePiece(piece_index):
+                self.factory.participation[self.remote_ip] += 1
                 self.factory.pieces_need -= 1
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
         else:
             if self.havePiece(piece_index) and self.validatePiece(piece_index):
+                self.factory.participation[self.remote_ip] += 1
                 self.factory.pieces_need -= 1
                 self.writePieceToFile(piece_index)
                 self.generateRequest()
@@ -172,6 +176,7 @@ class PeerProtocol(Protocol):
         # Someone wrote the last piece
         if self.factory.pieces_need <= 0:
             print('File download complete...')
+            # self.printParticipation()
             if self.factory.multi_file:
                 self.writeToFiles()
             else: 
@@ -186,6 +191,12 @@ class PeerProtocol(Protocol):
         expected_hash = self.factory.piece_hashes[pi * 20 : pi  * 20 + 20]
         return piece_hash == expected_hash
 
+
+    def printParticipation(self):
+        print('Participation (for debug purposes):')
+        for ip in self.factory.participation:
+            print('\t%s sent us %d pieces' % (ip, self.factory.participation[ip]))
+
     def writePieceToFile(self, pi):
         self.factory.progress.update(1)
         if not self.factory.multi_file:
@@ -196,6 +207,13 @@ class PeerProtocol(Protocol):
             self.factory.data[pi] = None #frees up memory??
         else: pass # TODO: figure out how to write files on the fly..(we're gonna have to pre-calculate that)
 
+    # Creates, and than loads the file path as a write buffer
+    def openFilePath(self, path):
+        file_name = path.pop()
+        directory = os.path.join(os.getcwd(), 'downloads', *path)
+        if len(path) > 0: os.makedirs(directory)
+        return open(directory + '/' + file_name, 'wb')
+
     def writeToFiles(self):
         
         # stop receiving messages
@@ -203,10 +221,9 @@ class PeerProtocol(Protocol):
         reactor.stop()
 
         bytes_written = 0 
-        d = 'downloads/'
         fi = 0
         file_size = self.factory.files_info[fi]['length']
-        f = open(d + self.factory.files_info[fi]['path'], 'wb')
+        f = self.openFilePath(self.factory.files_info[fi]['path'])
 
         for pi in range(self.factory.num_pieces):
             data = b''
@@ -224,7 +241,7 @@ class PeerProtocol(Protocol):
                 f.close()
                 # Close current file, open a new one, and begin writing to it
                 fi += 1
-                f = open(d + self.factory.files_info[fi]['path'], 'wb')
+                f = self.openFilePath(self.factory.files_info[fi]['path'])
                 file_size = self.factory.files_info[fi]['length']
                 f.write(rem_data)
                 bytes_written = len(rem_data)
@@ -394,6 +411,7 @@ class PeerFactory(Factory):
         
         self.piece_hashes = metadata.pieces
         self.pieces_need = self.num_pieces - 1
+        self.participation = {}
 
         self.progress = tqdm(total=self.num_pieces, initial=1)
 

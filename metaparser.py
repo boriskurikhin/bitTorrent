@@ -79,6 +79,6 @@ class MetaContent:
             self.length = 0
             for f in self.decoded['info']['files']:
                 self.length += int(f['length'])
-                self.files.append({ 'length': int(f['length']), 'path': f['path'][0] })
+                self.files.append({ 'length': int(f['length']), 'path': f['path'] })
             self.last_piece_len = self.length - self.piece_length * (self.num_pieces - 1)
         self.file_info()
