@@ -21,7 +21,7 @@ class httpAnnounceHelper:
     def unpack_request(self, req):
         #i think we might have to change the endianness of the response
         decoded = bcoding.bdecode(req)
-        print('%d seeders, %d leechers' % (decoded['complete'], decoded['incomplete']))
+        # print('%d seeders, %d leechers' % (decoded['complete'], decoded['incomplete']))
         peers = []
         for i in range(0, len(decoded['peers']), 6):
             ip_add = str(ipaddress.IPv4Address(int.from_bytes(decoded['peers'][i : i + 4], byteorder='big')))

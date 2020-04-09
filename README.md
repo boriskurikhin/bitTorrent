@@ -1,6 +1,5 @@
 # БTorrent (bTorrent)
 
-![Logo](docs/logo.jpg)
 
 This is my fully functional [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python.
 
@@ -52,7 +51,7 @@ However, this could not be possible without:
 
 ### User Interface (v1.0)
 
-This is what the UI looks like right now *(no music was illegally distributed in the making this screenshot)*:
+This is what the UI looks like right now - downloading Debian:
 
-![User Interface](docs/UI.jpg)
+![User Interface](docs/UI.png)
 
