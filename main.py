@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from metaparser import MetaContent
 from communicator import Communicator
 from protocol import PeerProtocol, PeerFactory

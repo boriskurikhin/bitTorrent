@@ -1,19 +1,34 @@
+import ipaddress
 import requests
+import struct
 import bcoding
 
 class httpAnnounceHelper:
     def pack_request(self, params):
-        info_hash = requests.utils.quote(params['info_hash'])
-        peer_id = requests.utils.quote(params['peer_id'])
-        # sketchy
+        p = {
+            'info_hash': params['info_hash'],
+            'peer_id': params['peer_id'],
+            'port': 8000,
+            'uploaded': 0,
+            'downloaded': 0,
+            'left': str(params['left']),
+            'compact': '1',
+            'event': 'started',
+        }
         url = params['announce'].scheme + '://' + params['announce'].netloc + params['announce'].path
-        url += '?info_hash=' + info_hash + '&peer_id=' + peer_id + '&port=8000&uploaded=0&downloaded=0&' + \
-               'left=' + str(params['left']) + '&compact=1&event=started'
-        resp = requests.get(url)
-        return resp.text
+        resp = requests.get(url, params=p)
+        return resp.content
     
     def unpack_request(self, req):
-        enc = req.encode('utf-8')
-        dec = bcoding.bdecode(enc.decode('utf-8'))
-        print(enc)
-        exit(0)
+        #i think we might have to change the endianness of the response
+        decoded = bcoding.bdecode(req)
+        print('%d seeders, %d leechers' % (decoded['complete'], decoded['incomplete']))
+        peers = []
+        
+        for i in range(0, len(decoded['peers']), 6):
+            print(decoded['peers'][i:i+6])
+            ip_add = str(ipaddress.IPv4Address(int.from_bytes(decoded['peers'][i : i + 4], byteorder='big')))
+            port = str(int.from_bytes(decoded['peers'][i + 4 : i + 6], byteorder='big'))
+            peers.append(':'.join([ip_add, port]))
+        print(peers)
+        return peers

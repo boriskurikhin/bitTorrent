@@ -57,61 +57,54 @@ class Communicator:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(4)
 
-        if not self.load_extra_trackers:
-            self.trackers.append(self.mf.announce)
-
         # List of peers
         self.peers = []
 
-        # Contact every tracker
-        for announce in self.trackers:
-            # We only care about UDP
-            if announce.scheme != 'udp': 
-                continue
-            
-            print('Querying', announce.hostname)
 
-            # Establishing a connection with the UDP Server
-            con_helper = udpConnectionHelper()
-            ann_helper = udpAnnounceHelper()
-            
-            sender = Sender()
+        # Establishing a connection with the UDP Server
+        con_helper = udpConnectionHelper()
+        ann_helper = udpAnnounceHelper()
+        
+        sender = Sender()
 
-            try:
-                # Create address to where we will be sending our packet
-                address = (socket.gethostbyname(announce.hostname), announce.port)
-            except Exception as e:
-                continue
+        try:
+            # Create address to where we will be sending our packet
+            address = (socket.gethostbyname(self.mf.announce.hostname), self.mf.announce.port)
+        except Exception as e:
+            print('Error extracting announce address')
+            return
 
-            # Pass off the request to the sender, receive bytes
-            conn_response_bytes = sender.send_packet(sock, address, con_helper.pack_payload())
-            
-            # Move on from this tracker..
-            if len(conn_response_bytes) == 0:
-                continue
+        # Pass off the request to the sender, receive bytes
+        conn_response_bytes = sender.send_packet(sock, address, con_helper.pack_payload())
+        
+        # Move on from this tracker..
+        if len(conn_response_bytes) == 0:
+            print('No reply from tracker')
+            return
 
-            conn_response = con_helper.unpack_payload(conn_response_bytes)
+        conn_response = con_helper.unpack_payload(conn_response_bytes)
 
-            # Parameters needed to send the announce payload
-            params = {
-                'conn_id': conn_response['conn_id'],
-                'info_hash': self.mf.info_hash,
-                'peer_id': self.peer_id,
-                'left': self.mf.length
-            }
+        # Parameters needed to send the announce payload
+        params = {
+            'conn_id': conn_response['conn_id'],
+            'info_hash': self.mf.info_hash,
+            'peer_id': self.peer_id,
+            'left': self.mf.length
+        }
 
-            # Sends out another packet requesting a list of peers who have our file
-            ann_response_bytes = sender.send_packet(sock, address, ann_helper.pack_payload(params))
-            ann_response = ann_helper.unpack_payload(ann_response_bytes)
+        # Sends out another packet requesting a list of peers who have our file
+        ann_response_bytes = sender.send_packet(sock, address, ann_helper.pack_payload(params))
+        ann_response = ann_helper.unpack_payload(ann_response_bytes)
 
-            # self.interval = ann_response['interval'] # no one gives a shit
-            self.peers.extend(ann_response['peers']) #what we all came here for
+        # self.interval = ann_response['interval'] # no one gives a shit
+        self.peers.extend(ann_response['peers']) #what we all came here for
 
     '''
         If the tracker type is HTTP
     '''
     def http_request(self):
-        
+        self.peers = []
+
         conn_helper = httpAnnounceHelper()
 
         params = {
@@ -122,11 +115,9 @@ class Communicator:
         }
 
         raw_resp = conn_helper.pack_request(params)
-        resp = conn_helper.unpack_request(raw_resp)
+        peers = conn_helper.unpack_request(raw_resp)
     
-        exit(0)
-
-        return None
+        self.peers.extend(peers) #what we all came here for
     '''
         This function is responsible for 
         contacting the tracker and receiving a list
