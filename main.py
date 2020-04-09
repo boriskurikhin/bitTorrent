@@ -6,6 +6,7 @@ from protocol import PeerProtocol, PeerFactory
 from twisted.internet.endpoints import TCP4ClientEndpoint, TCP4ServerEndpoint
 from twisted.internet import reactor
 from twisted.internet.endpoints import connectProtocol
+import os
 
 def gotProtocol(p):
     p.sendHandshake(True)
@@ -33,6 +34,11 @@ if __name__ == '__main__':
 
     com = Communicator(mp, False)
     peers = com.get_peers()
+
+    download_dir = os.path.join(os.getcwd(), 'downloads')
+    #create download directory, if we don't already have one
+    if not os.path.exists(download_dir):
+        os.mkdir(download_dir)
 
     start_server(peers, mp.piece_length, mp.last_piece_len, mp)
 
