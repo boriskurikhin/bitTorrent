@@ -1,25 +1,25 @@
-# БTorrent (bTorrent) v2.0
+# БTorrent (bTorrent)
 
-This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python3.
+This is my fully functional [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python.
 
 ### How to run?
 
-*Instructions will be available soon along with the list of all required packages.*
+Make sure your `.torrent` file is in the same directory as `main.py`
 
-### Versions
-##### &nbsp;&nbsp;&nbsp;&nbsp;v1.0
-- Single file download through concurrent communication with multiple peers
-- Supports UDP trackers only (for now)
-- Doesn't support multiple torrents/files
-- Verifies SHA1 hashes to ensure integrity
-##### &nbsp;&nbsp;&nbsp;&nbsp;v1.1
-- Added support for multiple files (but not directories)
-##### &nbsp;&nbsp;&nbsp;&nbsp;v1.2
-- Overall download speed increase 
-- Pieces requested in random order
-- Functions operate on bytes instead of hex strings
-##### &nbsp;&nbsp;&nbsp;&nbsp;v2.0
-- Supports HTTP/HTTPs trackers
+```bash
+pip3 install -r requirements.txt
+python3 main.py
+```
+
+### Includes
+
+- Fast, concurrent p2p exchange
+- Single file torrents
+- Multi-file torrents
+- Multi-directory torrents
+- UDP/HTTP/HTTPS trackers
+- SHA1 hash checks of all pieces
+- Random piece selection (improves speed)
 
 ### What is a BitTorrent client?
 
