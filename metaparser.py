@@ -1,7 +1,8 @@
 from bcoding import bencode, bdecode
 from datetime import datetime
-import hashlib
 import urllib.parse
+import hashlib
+import os
 
 '''
     This class is responsible for opening a .torrent file
@@ -25,7 +26,7 @@ class MetaContent:
         if self.multi_file:
             print('-----(# %d files)------' % (len(self.files)))
             for f in self.files:
-                print('%s:\t(%d bytes)' % (f['path'], f['length']))
+                print('(%d bytes):  %s' % (f['length'], os.path.join(*f['path'])))
             print('------end------')
         print('%s:\t%s' % ('info-hash', self.info_hash.hex()))
     

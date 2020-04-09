@@ -96,7 +96,6 @@ class PeerProtocol(Protocol):
             self.am_choking = False
             self.generateRequest()
         elif message_id == 2:
-            print(self.remote_ip, 'is interested')
             pass
         elif message_id == 3:
             pass
@@ -113,7 +112,7 @@ class PeerProtocol(Protocol):
         elif message_id == 9:
             pass
         elif message_id == 20:
-            self.parseExtended(payload[5:])
+            pass # self.parseExtended(payload[5:])
         else:
             self.checkIncomingHandshake(payload)
 
