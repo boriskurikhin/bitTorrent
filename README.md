@@ -17,7 +17,7 @@ python3 main.py
 - Single file torrents
 - Multi-file torrents
 - Multi-directory torrents
-- UDP/HTTP/HTTPS trackers
+- UDP/HTTP trackers
 - SHA1 hash checks of all pieces
 - Random piece selection (improves speed)
 
