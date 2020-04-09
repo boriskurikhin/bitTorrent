@@ -1,4 +1,4 @@
-# БTorrent (bTorrent)
+# БTorrent (bTorrent) v2.0
 
 This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python3.
 
@@ -18,6 +18,8 @@ This is my [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written
 - Overall download speed increase 
 - Pieces requested in random order
 - Functions operate on bytes instead of hex strings
+##### &nbsp;&nbsp;&nbsp;&nbsp;v2.0
+- Supports HTTP/HTTPs trackers
 
 ### What is a BitTorrent client?
 
