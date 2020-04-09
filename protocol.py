@@ -112,8 +112,16 @@ class PeerProtocol(Protocol):
             pass
         elif message_id == 9:
             pass
+        elif message_id == 20:
+            self.parseExtended(payload[5:])
         else:
             self.checkIncomingHandshake(payload)
+
+    def parseExtended(self, payload):
+        import bcoding
+        import json
+        ext = bcoding.bdecode(payload[1:])
+        print(ext)
 
     def getBlock(self, pi, bi):
         return self.factory.bitfield[pi * self.factory.blocks_in_whole_piece + bi]
@@ -340,7 +348,7 @@ class PeerProtocol(Protocol):
     def checkIncomingHandshake(self, payload):
 #        hexdump(payload)
         protocol_len, = struct.unpack('>B', payload[:1])
-        protocol, reserved, info_hash, self.client_id = struct.unpack('>%ds8s20s20s' % protocol_len, payload[1:68])
+        protocol, reserved, info_hash, self.client_id, = struct.unpack('>%ds8s20s20s' % protocol_len, payload[1:68])
 
         if protocol != b'BitTorrent protocol': 
             return
@@ -363,10 +371,20 @@ class PeerProtocol(Protocol):
             self.sendBitfield()
             return # They're not supposed to send anything else until we returned the handshake
 
+        #check if peer is using a distributed hash table
+        dht_support = reserved[7] & 1
+        
+        # that's for later tho
+        if (dht_support):
+            self.dhtPortRequest()
+
         # do we have more data? 
         payload_len = len(payload) - 68
 
         if payload_len > 0: self.receiveNewMessage(payload[68:])
+
+    def dhtPortRequest(self):
+        pass
         
     def addPeer(self):
         self.have_handshaked = True
@@ -376,7 +394,8 @@ class PeerProtocol(Protocol):
 
     # This function is triggered upon a new connection, it sends out a handshake
     def sendHandshake(self, originalPeer=False):
-        payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 0 , *self.factory.info_hash, *self.factory.peer_id])
+        # 
+        payload = struct.pack('>B19sQ20B20B', *[19, b'BitTorrent protocol', 1048576 , *self.factory.info_hash, *self.factory.peer_id])
         self.transport.write(payload)
     
     # We are interested
