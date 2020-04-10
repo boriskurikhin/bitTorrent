@@ -1,6 +1,6 @@
 # БTorrent (bTorrent)
 
-![logo](docs/logo.png)
+![logo](docs/logo.jpg)
 
 This is my fully functional [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python.
 
