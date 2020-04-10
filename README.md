@@ -1,5 +1,6 @@
 # БTorrent (bTorrent)
 
+![logo](docs/logo.jpg)
 
 This is my fully functional [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python.
 
@@ -24,7 +25,7 @@ python3 main.py
 
 ### What is a BitTorrent client?
 
-Traditionally, files are downloaded from a single server. You (the client), ask the server to send you some file and the server replies by sending it to you in chunks. This is bad if the server goes down, or if the connection is poor, and it's also very boring from a programming perspective.
+Traditionally, files are downloaded from a single server. You (the client), ask the server to send you some file and the server replies by sending it to you in chunks. This is bad if the server goes down, or if the connection is poor, takes up a lot of bandwidth, and is also very boring from a programming perspective.
 
 BitTorrent is a protocol in which there is no single/central server (it's decentralized). BitTorrents work via peer-to-peer communication where peers (clients) exchange tiny pieces of the original file with each other until they collect the whole thing. That's a lot more fun!
 
