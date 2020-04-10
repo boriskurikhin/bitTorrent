@@ -29,8 +29,15 @@ def start_server(peers, piece_length, last_piece_length, mp):
     
 # Main method
 if __name__ == '__main__':
+    print('Welcome to БTorrent, enter the name of your torrent file:')
+    
+    file_name = input().strip()
+
+    if not file_name.endswith('.torrent'):
+        file_name += '.torrent'
+
     mp = MetaContent()
-    mp.parseFile('test.torrent')
+    mp.parseFile(file_name)
 
     com = Communicator(mp, False)
     peers = com.get_peers()
