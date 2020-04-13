@@ -2,7 +2,7 @@
 
 ![logo](docs/logo.jpg)
 
-This is my fully functional [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written from scratch in Python.
+This is my fully functional [BitTorrent](https://en.wikipedia.org/wiki/BitTorrent) client written over a weekend from scratch in Python.
 
 ### How to run?
 
